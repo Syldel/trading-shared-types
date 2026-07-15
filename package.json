@@ -1,0 +1,56 @@
+{
+  "name": "@syldel/trading-shared-types",
+  "version": "0.1.0",
+  "description": "Shared TypeScript types for a trading strategy engine (rule builder AST, exchange/pair config, order anchoring)",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Syldel/trading-shared-types.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Syldel/trading-shared-types/issues"
+  },
+  "homepage": "https://github.com/Syldel/trading-shared-types#readme",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts",
+    "clean": "rm -rf dist",
+    "verify": "npm run typecheck && npm run lint && npm run build",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run verify",
+    "husky:init": "husky"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "tsup": "^8.3.5",
+    "eslint": "^9.17.0",
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.1",
+    "husky": "^9.1.7"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  }
+}
