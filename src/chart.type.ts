@@ -94,12 +94,3 @@ export const INTERVAL_MS: Record<string, number> = {
   '1w': 604_800_000,
   '1M': 2_592_000_000,
 };
-
-export interface AnalysisCandle {
-  time: number;
-  open: number;
-  high: number;
-  low: number;
-  close: number;
-  volume: number;
-}

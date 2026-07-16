@@ -1,9 +1,16 @@
 export type PriceField = 'open' | 'high' | 'low' | 'close' | 'volume';
 
+export type IndicatorOperand =
+  | { name: 'ema' | 'sma' | 'hma' | 'atr' | 'sd'; period?: number; subField?: undefined }
+  | { name: 'rsi'; period?: number; subField?: undefined }
+  | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number; subField?: 'macd' | 'signal' | 'histogram' }
+  | { name: 'adx'; period?: number; subField?: 'adx' | 'pdi' | 'mdi' }
+  | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number; subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' };
+
 export type Operand =
-  | { type: 'price'; field: PriceField; offset?: number } // ex: close à j-1, high à j-2
-  | { type: 'indicator'; name: string; period?: number; subField?: string } // ex: ema(9), macd_line
-  | { type: 'number'; value: number }; // ex: 30, 70, 0
+  | { type: 'price'; field: PriceField; offset?: number }
+  | ({ type: 'indicator' } & IndicatorOperand)
+  | { type: 'number'; value: number };
 
 export type ComparisonOperator = 'GT' | 'GTE' | 'LT' | 'LTE' | 'EQ';
 export type LogicalOperator = 'AND' | 'OR';
