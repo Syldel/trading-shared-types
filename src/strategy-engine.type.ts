@@ -50,7 +50,12 @@ export interface AdvancedStrategyParameters {
 export interface TimelineSignal {
   time: number;
   signal: 'ENTER' | 'EXIT';
-  metadata?: Record<string, number | string>;
+  metadata?: {
+    price: number;
+    tradeProfitPercent?: number;
+    cumulativeProfitPercent: number;
+    [key: string]: number | string | undefined;
+  };
 }
 
 export type TrendDirection = 'UP' | 'DOWN';
