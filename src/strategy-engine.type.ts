@@ -5,7 +5,13 @@ export type IndicatorOperand =
   | { name: 'rsi'; period?: number; subField?: undefined }
   | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number; subField?: 'macd' | 'signal' | 'histogram' }
   | { name: 'adx'; period?: number; subField?: 'adx' | 'pdi' | 'mdi' }
-  | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number; subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' };
+  | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number; subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' }
+  | {
+      name: 'bb';
+      period?: number;
+      stdDev?: number;
+      subField?: 'upper' | 'middle' | 'lower';
+    };
 
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }

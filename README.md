@@ -9,7 +9,7 @@ mobile app. Zero runtime dependencies, zero framework decorators — only `type`
 - `strategy-engine.type.ts` — strategy rule AST (`RuleNode`, `Operand`, `IndicatorOperand`, `ComparisonCondition`, `TrendCondition`, `LogicalGroup`...)
 - `exchange-config.interface.ts` — exchange/pair/strategy config (`IExchange`, `IExchangeStrategy`, `LatentOrderStrategy`, `ProtectiveOrderStrategy`...)
 - `exchange-meta.type.ts` — contract for `GET /exchanges/meta` (`ExchangesMetaResponse`, `IndicatorMetadata`, `StrategyMeta`...)
-- `chart.type.ts` — `ChartInterval`, `ReadableChartInterval`, `chartIntervalMap`, `chartIntervalToMinutes`, `INTERVAL_MS`
+- `chart.type.ts` — `ChartInterval`, `ReadableChartInterval`, `chartIntervalMap`, `chartIntervalToMinutes`
 - `analysis-candle.type.ts` — `AnalysisCandle`
 - `analysis.type.ts` — contract for `POST /analysis` (`AnalysisRequest`, `AnalysisResponse`, `IndicatorRequest`...)
 
@@ -18,9 +18,9 @@ mobile app. Zero runtime dependencies, zero framework decorators — only `type`
 ### From Git (recommended, pinned to a tag)
 
 ```bash
-npm install "git+ssh://git@github.com/Syldel/trading-shared-types.git#v0.1.0"
+npm install "git+ssh://git@github.com/Syldel/trading-shared-types.git#v0.2.1"
 # or over HTTPS:
-npm install "git+https://github.com/Syldel/trading-shared-types.git#v0.1.0"
+npm install "git+https://github.com/Syldel/trading-shared-types.git#v0.2.1"
 ```
 
 npm automatically runs the `prepare` script (= `npm run build`) right after cloning,
@@ -182,10 +182,41 @@ What's different from a plain `git init && git add -A && git commit -m "init"`:
 ## Versioning a change
 
 1. Edit the types in `src/`.
-2. `npm run verify` to check locally (typecheck + lint + build).
-3. Bump the version in `package.json` (semver — see rule below).
-4. `git tag -a v0.x.y -m "..." && git push --follow-tags`.
-5. In Nest and Ionic: `npm install "git+ssh://...#v0.x.y"` (explicit bump on both sides).
+2. Commit your changes — `npm version` refuses to run on a dirty working directory:
+
+```bash
+   git add -A
+   git commit -m "feat: describe what changed in the types"
+```
+
+3. Run the full check before touching the version number:
+
+```bash
+   npm run verify   # typecheck && lint && build
+```
+
+4. Bump the version, commit the bump, and tag it — all in one command
+   (pick `patch` / `minor` / `major` per the semver rule below):
+
+```bash
+   npm version minor -m "chore(release): %s"
+```
+
+   `npm version` updates `package.json`/`package-lock.json`, creates a commit
+   with that message (`%s` is replaced by the new version number), and creates
+   a matching annotated tag (e.g. `v0.2.0`) — no need to run `git tag` separately.
+
+5. Push the commit and the tag together:
+
+```bash
+   git push --follow-tags
+```
+
+6. In Nest and Ionic, bump explicitly on both sides:
+
+```bash
+   npm install "git+ssh://git@github.com/Syldel/trading-shared-types.git#v0.x.y"
+```
 
 ### Semver rule to follow here
 

@@ -16,6 +16,11 @@ export type IndicatorRequest =
       basePeriod?: number;
       spanPeriod?: number;
       displacement?: number;
+    }
+  | {
+      name: 'bb';
+      period?: number;
+      stdDev?: number;
     };
 
 export interface SimpleSeriesPoint {

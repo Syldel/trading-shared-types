@@ -73,24 +73,3 @@ export const chartIntervalToMinutes: Record<ChartInterval, number> = {
   '1M': 43200,
   '3M': 129600,
 };
-
-// NOTE: keys here don't fully match ChartInterval / ReadableChartInterval
-// ('8h', '3d' have no equivalent above; '1d' vs '1D' casing differs).
-// Kept as-is from the Nest project — worth reconciling into a single
-// source of truth if this map and ChartInterval start drifting further apart.
-export const INTERVAL_MS: Record<string, number> = {
-  '1m': 60_000,
-  '3m': 180_000,
-  '5m': 300_000,
-  '15m': 900_000,
-  '30m': 1_800_000,
-  '1h': 3_600_000,
-  '2h': 7_200_000,
-  '4h': 14_400_000,
-  '8h': 28_800_000,
-  '12h': 43_200_000,
-  '1d': 86_400_000,
-  '3d': 259_200_000,
-  '1w': 604_800_000,
-  '1M': 2_592_000_000,
-};
