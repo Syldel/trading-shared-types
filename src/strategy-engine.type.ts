@@ -33,7 +33,7 @@ export interface ComparisonCondition {
 export interface LogicalGroup {
   type: 'logical';
   operator: LogicalOperator;
-  conditions: (ComparisonCondition | LogicalGroup)[];
+  conditions: RuleNode[];
 }
 
 export interface AdvancedStrategyParameters {

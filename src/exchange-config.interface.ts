@@ -8,6 +8,8 @@ export type ExitBehavior = 'STRATEGY_SIGNAL' | 'EXIT_ON_PROFIT_ONLY' | 'NEVER';
 interface BaseParameter {
   id: string;
   label: string;
+  description?: string;
+  enabled?: boolean;
 }
 
 export type StrategyParameter =
@@ -39,14 +41,14 @@ export interface IExchangeStrategy {
 }
 
 export type IExchange = {
-  enabled: boolean;
+  enabled?: boolean;
   pairs: IExchangePair[];
 };
 
 export type IExchangePair = {
   name: string;
   ratio: number;
-  enabled: boolean;
+  enabled?: boolean;
   interval: ChartInterval;
   strategy?: IExchangeStrategy;
   exitBehavior?: ExitBehavior;
@@ -63,7 +65,7 @@ export type AnchorSource = 'MARKET' | 'ENTRY' | 'INDICATOR';
 /** Dynamic structure defining the geometric price alignment of a trade order. */
 export interface IOrderAnchor {
   source: AnchorSource;
-  indicatorName?: string;
+  name?: string;
   subField?: string;
   parameters?: Record<string, number>;
 }
@@ -72,7 +74,7 @@ export interface IOrderAnchor {
 
 /** Configuration schema for individual resting or non-position trigger entry setups. */
 export interface LatentOrderEntry {
-  enabled: boolean;
+  enabled?: boolean;
   side: 'LONG' | 'SHORT';
   orderType: OrderExecutionType;
   anchor: IOrderAnchor;
@@ -83,7 +85,7 @@ export interface LatentOrderEntry {
 
 /** Strategic parent schema handling latent entry setups before active execution. */
 export interface LatentOrderStrategy {
-  enabled: boolean;
+  enabled?: boolean;
   entries: LatentOrderEntry[];
 }
 
