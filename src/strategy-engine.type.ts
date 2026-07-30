@@ -11,6 +11,12 @@ export type IndicatorOperand =
       period?: number;
       stdDev?: number;
       subField?: 'upper' | 'middle' | 'lower';
+    }
+  | {
+      name: 'bbw' | 'bbp';
+      period?: number;
+      stdDev?: number;
+      subField?: undefined;
     };
 
 export type Operand =

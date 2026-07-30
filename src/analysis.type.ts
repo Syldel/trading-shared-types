@@ -18,7 +18,7 @@ export type IndicatorRequest =
       displacement?: number;
     }
   | {
-      name: 'bb';
+      name: 'bb' | 'bbw' | 'bbp';
       period?: number;
       stdDev?: number;
     };
