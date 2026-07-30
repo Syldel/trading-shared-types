@@ -1,6 +1,6 @@
 {
   "name": "@syldel/trading-shared-types",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Shared TypeScript types for a trading strategy engine (rule builder AST, exchange/pair config, order anchoring)",
   "license": "UNLICENSED",
   "private": true,
