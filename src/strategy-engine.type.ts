@@ -1,8 +1,7 @@
 export type PriceField = 'open' | 'high' | 'low' | 'close' | 'volume';
 
 export type IndicatorOperand =
-  | { name: 'ema' | 'sma' | 'hma' | 'atr' | 'sd'; period?: number; subField?: undefined }
-  | { name: 'rsi'; period?: number; subField?: undefined }
+  | { name: 'ema' | 'sma' | 'hma' | 'atr' | 'sd' | 'rsi' | 'chop'; period?: number; subField?: undefined }
   | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number; subField?: 'macd' | 'signal' | 'histogram' }
   | { name: 'adx'; period?: number; subField?: 'adx' | 'pdi' | 'mdi' }
   | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number; subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' }

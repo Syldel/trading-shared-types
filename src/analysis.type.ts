@@ -7,9 +7,8 @@ import type { AdvancedStrategyParameters, TimelineSignal } from './strategy-engi
 // Mirrors IndicatorOperand's discriminated shape, but without `subField`:
 // this requests a full raw series for charting, not a single rule-evaluable value.
 export type IndicatorRequest =
-  | { name: 'ema' | 'sma' | 'hma' | 'rsi' | 'atr' | 'sd'; period?: number }
+  | { name: 'ema' | 'sma' | 'hma' | 'rsi' | 'atr' | 'sd' | 'chop' | 'adx'; period?: number }
   | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number }
-  | { name: 'adx'; period?: number }
   | {
       name: 'ichimoku';
       conversionPeriod?: number;
