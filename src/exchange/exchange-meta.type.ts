@@ -1,4 +1,4 @@
-import type { ChartInterval } from "./chart.type";
+import type { ChartInterval } from "../chart.type";
 import type { AnchorSource, ExitBehavior, OrderExecutionType, StrategyParameter, TpslType } from "./exchange-config.interface";
 
 export interface IndicatorParameter {

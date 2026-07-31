@@ -1,4 +1,4 @@
-import type { IExchange } from "./exchange-config.interface";
+import type { IExchange } from "./exchange/exchange-config.interface";
 
 export interface ExternalUser {
   _id: string;

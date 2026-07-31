@@ -1,5 +1,5 @@
-import type { ChartInterval } from './chart.type.js';
-import type { LogicalGroup, RuleNode } from './strategy-engine.type.js';
+import type { ChartInterval } from '../chart.type.js';
+import type { LogicalGroup, RuleNode } from '../strategies/strategy-engine.type.js';
 
 export type ExitBehavior = 'STRATEGY_SIGNAL' | 'EXIT_ON_PROFIT_ONLY' | 'NEVER';
 

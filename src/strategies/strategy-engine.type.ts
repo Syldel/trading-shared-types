@@ -1,43 +1,6 @@
-export type PriceField = 'open' | 'high' | 'low' | 'close' | 'volume';
+import type { IndicatorOperand } from "../indicators/indicator-request.types";
 
-export type IndicatorOperand =
-  | { name: 'ema' | 'sma' | 'hma' | 'atr' | 'sd' | 'rsi' | 'chop'; period?: number; subField?: undefined }
-  | { name: 'obv'; subField?: undefined }
-  | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number; subField?: 'macd' | 'signal' | 'histogram' }
-  | { name: 'adx'; period?: number; subField?: 'adx' | 'pdi' | 'mdi' }
-  | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number; subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' }
-  | {
-      name: 'bb';
-      period?: number;
-      stdDev?: number;
-      subField?: 'upper' | 'middle' | 'lower';
-    }
-  | {
-      name: 'bbw' | 'bbp';
-      period?: number;
-      stdDev?: number;
-      subField?: undefined;
-    }
-  | {
-      name: 'supertrend';
-      period?: number;
-      multiplier?: number;
-      subField?: 'supertrend' | 'direction';
-    }
-  | {
-      name: 'stochrsi';
-      rsiPeriod?: number;
-      stochasticPeriod?: number;
-      kPeriod?: number;
-      dPeriod?: number;
-      subField?: 'stochRSI' | 'k' | 'd';
-    }
-  | {
-      name: 'keltner';
-      period?: number;
-      multiplier?: number;
-      subField?: 'upper' | 'middle' | 'lower';
-    };
+export type PriceField = 'open' | 'high' | 'low' | 'close' | 'volume';
 
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }
