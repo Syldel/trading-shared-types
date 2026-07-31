@@ -8,6 +8,7 @@ import type { AdvancedStrategyParameters, TimelineSignal } from './strategy-engi
 // this requests a full raw series for charting, not a single rule-evaluable value.
 export type IndicatorRequest =
   | { name: 'ema' | 'sma' | 'hma' | 'rsi' | 'atr' | 'sd' | 'chop' | 'adx'; period?: number }
+  | { name: 'obv' }
   | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number }
   | {
       name: 'ichimoku';
@@ -20,7 +21,16 @@ export type IndicatorRequest =
       name: 'bb' | 'bbw' | 'bbp';
       period?: number;
       stdDev?: number;
-    };
+    }
+  | { name: 'supertrend'; period?: number; multiplier?: number }
+  | {
+      name: 'stochrsi';
+      rsiPeriod?: number;
+      stochasticPeriod?: number;
+      kPeriod?: number;
+      dPeriod?: number;
+    }
+  | { name: 'keltner'; period?: number; multiplier?: number };
 
 export interface SimpleSeriesPoint {
   time: number;
