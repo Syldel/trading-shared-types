@@ -26,8 +26,8 @@ export interface AdxValue {
 }
 
 export interface IchimokuValue {
-  conversion: number;
-  base: number;
+  conversion?: number;
+  base?: number;
   spanA?: number;
   spanB?: number;
   chikou?: number;
