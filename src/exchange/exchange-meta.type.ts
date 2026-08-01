@@ -4,7 +4,9 @@ import type { AnchorSource, ExitBehavior, OrderExecutionType, StrategyParameter,
 export interface IndicatorParameter {
   name: string;
   label: string;
-  default: number;
+  default: number | string;
+  /** Optional discrete choices for string parameters. */
+  options?: { label: string; value: string | number }[];
 }
 
 export interface IndicatorSubField {

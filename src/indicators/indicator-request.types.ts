@@ -1,3 +1,5 @@
+import type { PivotPointsType } from './indicator-series.types.js';
+
 /**
  * Groupements de noms d'indicateurs par signature de paramètres
  */
@@ -19,7 +21,8 @@ export type IndicatorRequest =
   | { name: BollingerFamilyName; period?: number; stdDev?: number }
   | { name: 'supertrend'; period?: number; multiplier?: number }
   | { name: 'keltner'; period?: number; multiplier?: number }
-  | { name: 'stochrsi'; rsiPeriod?: number; stochasticPeriod?: number; kPeriod?: number; dPeriod?: number };
+  | { name: 'stochrsi'; rsiPeriod?: number; stochasticPeriod?: number; kPeriod?: number; dPeriod?: number }
+  | { name: 'pivotpoints'; type?: PivotPointsType };
 
 /**
  * ============================================================================
@@ -33,46 +36,51 @@ export type IndicatorOperand =
   | { name: SinglePeriodIndicatorName; period?: number; subField?: never }
   | { name: 'obv'; subField?: never }
   | { name: 'bbw' | 'bbp'; period?: number; stdDev?: number; subField?: never }
-  | { 
-      name: 'macd'; 
-      fastPeriod?: number; 
-      slowPeriod?: number; 
-      signalPeriod?: number; 
-      subField?: 'macd' | 'signal' | 'histogram' 
+  | {
+      name: 'macd';
+      fastPeriod?: number;
+      slowPeriod?: number;
+      signalPeriod?: number;
+      subField?: 'macd' | 'signal' | 'histogram'
     }
-  | { 
-      name: 'ichimoku'; 
-      conversionPeriod?: number; 
-      basePeriod?: number; 
-      spanPeriod?: number; 
-      displacement?: number; 
-      subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou' 
+  | {
+      name: 'ichimoku';
+      conversionPeriod?: number;
+      basePeriod?: number;
+      spanPeriod?: number;
+      displacement?: number;
+      subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou'
     }
-  | { 
-      name: 'bb'; 
-      period?: number; 
-      stdDev?: number; 
-      subField?: 'upper' | 'middle' | 'lower' 
+  | {
+      name: 'bb';
+      period?: number;
+      stdDev?: number;
+      subField?: 'upper' | 'middle' | 'lower'
     }
-  | { 
-      name: 'supertrend'; 
-      period?: number; 
-      multiplier?: number; 
-      subField?: 'supertrend' | 'direction' 
+  | {
+      name: 'supertrend';
+      period?: number;
+      multiplier?: number;
+      subField?: 'supertrend' | 'direction'
     }
-  | { 
-      name: 'keltner'; 
-      period?: number; 
-      multiplier?: number; 
-      subField?: 'upper' | 'middle' | 'lower' 
+  | {
+      name: 'keltner';
+      period?: number;
+      multiplier?: number;
+      subField?: 'upper' | 'middle' | 'lower'
     }
-  | { 
-      name: 'stochrsi'; 
-      rsiPeriod?: number; 
-      stochasticPeriod?: number; 
-      kPeriod?: number; 
-      dPeriod?: number; 
-      subField?: 'k' | 'd' | 'stochRSI' 
+  | {
+      name: 'stochrsi';
+      rsiPeriod?: number;
+      stochasticPeriod?: number;
+      kPeriod?: number;
+      dPeriod?: number;
+      subField?: 'k' | 'd' | 'stochRSI'
+    }
+  | {
+      name: 'pivotpoints';
+      type?: PivotPointsType;
+      subField?: 'pivot' | 'r1' | 'r2' | 'r3' | 'r4' | 's1' | 's2' | 's3' | 's4';
     };
 
 /**

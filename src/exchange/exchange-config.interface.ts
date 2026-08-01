@@ -67,7 +67,7 @@ export interface IOrderAnchor {
   source: AnchorSource;
   name?: string;
   subField?: string;
-  parameters?: Record<string, number>;
+  parameters?: Record<string, number | string>;
 }
 
 // ─── LATENT ORDERS (HORS POSITION) ───────────────────────────────────────────

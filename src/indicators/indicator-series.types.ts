@@ -56,6 +56,22 @@ export interface StochRsiValue {
   d: number;
 }
 
+export type PivotPointsType = 'standard' | 'fibonacci' | 'camarilla' | 'woodie';
+
+export interface PivotPointsValue {
+  pivot?: number;
+  r1?: number;
+  r2?: number;
+  r3?: number;
+  r4?: number;
+  s1?: number;
+  s2?: number;
+  s3?: number;
+  s4?: number;
+  /** Calculation variant used to produce this value (lossless context). */
+  type: PivotPointsType;
+}
+
 // ============================================================================
 // 📈 SÉRIES TEMPORELLES (Time-aligned Series Points - Valeur + Time)
 // ============================================================================
@@ -68,6 +84,7 @@ export interface BollingerBandsSeriesPoint extends BollingerBandsValue, TimePoin
 export interface SupertrendSeriesPoint extends SupertrendValue, TimePoint {}
 export interface KeltnerSeriesPoint extends KeltnerValue, TimePoint {}
 export interface StochRsiSeriesPoint extends StochRsiValue, TimePoint {}
+export interface PivotPointsSeriesPoint extends PivotPointsValue, TimePoint {}
 
 /**
  * Union globale de tous les types de points de séries supportés par l'API
@@ -81,4 +98,5 @@ export type IndicatorSeriesType =
   | BollingerBandsSeriesPoint[]
   | SupertrendSeriesPoint[]
   | KeltnerSeriesPoint[]
-  | StochRsiSeriesPoint[];
+  | StochRsiSeriesPoint[]
+  | PivotPointsSeriesPoint[];
