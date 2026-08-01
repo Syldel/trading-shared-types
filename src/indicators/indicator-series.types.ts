@@ -44,6 +44,12 @@ export interface SupertrendValue {
   direction: number;
 }
 
+export interface KeltnerValue {
+  upper: number;
+  middle: number;
+  lower: number;
+}
+
 export interface StochRsiValue {
   stochRSI: number;
   k: number;
@@ -60,6 +66,7 @@ export interface AdxSeriesPoint extends AdxValue, TimePoint {}
 export interface IchimokuSeriesPoint extends IchimokuValue, TimePoint {}
 export interface BollingerBandsSeriesPoint extends BollingerBandsValue, TimePoint {}
 export interface SupertrendSeriesPoint extends SupertrendValue, TimePoint {}
+export interface KeltnerSeriesPoint extends KeltnerValue, TimePoint {}
 export interface StochRsiSeriesPoint extends StochRsiValue, TimePoint {}
 
 /**
@@ -73,4 +80,5 @@ export type IndicatorSeriesType =
   | IchimokuSeriesPoint[]
   | BollingerBandsSeriesPoint[]
   | SupertrendSeriesPoint[]
+  | KeltnerSeriesPoint[]
   | StochRsiSeriesPoint[];
