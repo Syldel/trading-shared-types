@@ -22,7 +22,7 @@ export type IndicatorRequest =
   | { name: 'supertrend'; period?: number; multiplier?: number }
   | { name: 'keltner'; period?: number; multiplier?: number }
   | { name: 'stochrsi'; rsiPeriod?: number; stochasticPeriod?: number; kPeriod?: number; dPeriod?: number }
-  | { name: 'pivotpoints'; type?: PivotPointsType };
+  | { name: 'pivotpoints'; pivotType?: PivotPointsType };
 
 /**
  * ============================================================================
@@ -79,7 +79,7 @@ export type IndicatorOperand =
     }
   | {
       name: 'pivotpoints';
-      type?: PivotPointsType;
+      pivotType?: PivotPointsType;
       subField?: 'pivot' | 'r1' | 'r2' | 'r3' | 'r4' | 's1' | 's2' | 's3' | 's4';
     };
 
