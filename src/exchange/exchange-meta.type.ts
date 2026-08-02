@@ -1,26 +1,6 @@
 import type { ChartInterval } from "../chart.type";
 import type { AnchorSource, ExitBehavior, OrderExecutionType, StrategyParameter, TpslType } from "./exchange-config.interface";
-
-export interface IndicatorParameter {
-  name: string;
-  label: string;
-  default: number | string;
-  /** Optional discrete choices for string parameters. */
-  options?: { label: string; value: string | number }[];
-}
-
-export interface IndicatorSubField {
-  name: string;
-  label: string;
-}
-
-export interface IndicatorMetadata {
-  name: string;
-  label: string;
-  overlay: boolean;
-  parameters: IndicatorParameter[];
-  subFields?: IndicatorSubField[];
-}
+import type { IndicatorMetadata } from "./indicator-meta.type";
 
 export interface StrategyMeta {
   name: string;

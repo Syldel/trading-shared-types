@@ -2,6 +2,7 @@ export * from './analysis/analysis-candle.type.js';
 export * from './analysis/analysis.type.js';
 export * from './exchange/exchange-config.interface.js';
 export * from './exchange/exchange-meta.type.js';
+export * from './exchange/indicator-meta.type.js';
 export * from './indicators/indicator-request.types.js';
 export * from './indicators/indicator-series.types.js';
 export * from './strategies/strategy-engine.type.js';
