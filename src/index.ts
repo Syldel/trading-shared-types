@@ -5,6 +5,7 @@ export * from './exchange/exchange-meta.type.js';
 export * from './exchange/indicator-meta.type.js';
 export * from './indicators/indicator-request.types.js';
 export * from './indicators/indicator-series.types.js';
+export * from './indicators/indicator-defaults.js';
 export * from './strategies/strategy-engine.type.js';
 export * from './strategies/strategy.types.js';
 export * from './chart.type.js';
