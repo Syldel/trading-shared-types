@@ -7,6 +7,18 @@ export type SinglePeriodIndicatorName = 'ema' | 'sma' | 'hma' | 'rsi' | 'atr' | 
 export type BollingerFamilyName = 'bb' | 'bbw' | 'bbp';
 
 /**
+ * Sous-ensemble de `SinglePeriodIndicatorName` réellement utilisable sans `subField`
+ * dans `IndicatorOperand`.
+ *
+ * Un indicateur mono-période (period-only) qui expose plusieurs lignes calculées
+ * (ex: ADX → adx/pdi/mdi) doit sortir de ce sous-ensemble et recevoir sa propre
+ * branche dédiée dans `IndicatorOperand`, avec un `subField` listant ses lignes.
+ * `SinglePeriodIndicatorName` (utilisé par `IndicatorRequest`) n'a pas cette
+ * contrainte : il ne sert qu'à demander la série complète, jamais une ligne isolée.
+ */
+export type SinglePeriodOperandName = Exclude<SinglePeriodIndicatorName, 'adx'>;
+
+/**
  * ============================================================================
  * 📈 INDICATOR REQUEST
  * Utilisé par le front-end pour demander le calcul de séries complètes
@@ -33,9 +45,14 @@ export type IndicatorRequest =
  * ============================================================================
  */
 export type IndicatorOperand =
-  | { name: SinglePeriodIndicatorName; period?: number; subField?: never }
+  | { name: SinglePeriodOperandName; period?: number; subField?: never }
   | { name: 'obv'; subField?: never }
   | { name: 'bbw' | 'bbp'; period?: number; stdDev?: number; subField?: never }
+  | {
+      name: 'adx';
+      period?: number;
+      subField?: 'adx' | 'pdi' | 'mdi'
+    }
   | {
       name: 'macd';
       fastPeriod?: number;
