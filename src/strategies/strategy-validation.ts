@@ -94,7 +94,7 @@ export function collectAnchorIssues(
   if (!anchor || anchor.source !== 'INDICATOR') return [];
 
   const issue = validateIndicatorOperand({
-    name: anchor.name?.toLowerCase(),
+    name: anchor.name.toLowerCase(),
     subField: anchor.subField,
   });
 
