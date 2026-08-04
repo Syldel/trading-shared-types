@@ -1,3 +1,5 @@
+import type { IndicatorSubFieldDefinition } from '../indicators/indicator-subfields.js';
+
 export interface IndicatorOption<T extends string | number> {
   label: string;
   value: T;
@@ -35,15 +37,12 @@ export type IndicatorParameter =
   | StringIndicatorParameter
   | SelectIndicatorParameter;
 
-export interface IndicatorSubField {
-  name: string;
-  label: string;
-}
+export type IndicatorSubField = IndicatorSubFieldDefinition;
 
 export interface IndicatorMetadata {
   name: string;
   label: string;
   overlay: boolean;
   parameters: IndicatorParameter[];
-  subFields?: IndicatorSubField[];
+  subFields?: readonly IndicatorSubField[];
 }
