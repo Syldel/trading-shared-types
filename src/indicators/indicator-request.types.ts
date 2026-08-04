@@ -40,8 +40,13 @@ export type IndicatorRequest =
  * ============================================================================
  * ⚙️ INDICATOR OPERAND
  * Utilisé par le moteur de règles/stratégies.
- * Étend la logique des requêtes en y ajoutant le `subField` strict pour 
+ * Étend la logique des requêtes en y ajoutant le `subField` strict pour
  * sélectionner une ligne spécifique d'un indicateur complexe.
+ *
+ * Un indicateur multi-lignes ne désigne pas une valeur unique : `subField` y
+ * est donc obligatoire (pas de ligne par défaut, jamais). Voir
+ * `INDICATOR_SUBFIELDS` dans `indicator-subfields.ts`, source unique de ces
+ * mêmes listes de lignes.
  * ============================================================================
  */
 export type IndicatorOperand =
@@ -51,14 +56,14 @@ export type IndicatorOperand =
   | {
       name: 'adx';
       period?: number;
-      subField?: 'adx' | 'pdi' | 'mdi'
+      subField: 'adx' | 'pdi' | 'mdi'
     }
   | {
       name: 'macd';
       fastPeriod?: number;
       slowPeriod?: number;
       signalPeriod?: number;
-      subField?: 'macd' | 'signal' | 'histogram'
+      subField: 'macd' | 'signal' | 'histogram'
     }
   | {
       name: 'ichimoku';
@@ -66,25 +71,25 @@ export type IndicatorOperand =
       basePeriod?: number;
       spanPeriod?: number;
       displacement?: number;
-      subField?: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou'
+      subField: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou'
     }
   | {
       name: 'bb';
       period?: number;
       stdDev?: number;
-      subField?: 'upper' | 'middle' | 'lower'
+      subField: 'upper' | 'middle' | 'lower'
     }
   | {
       name: 'supertrend';
       period?: number;
       multiplier?: number;
-      subField?: 'supertrend' | 'direction'
+      subField: 'supertrend' | 'direction'
     }
   | {
       name: 'keltner';
       period?: number;
       multiplier?: number;
-      subField?: 'upper' | 'middle' | 'lower'
+      subField: 'upper' | 'middle' | 'lower'
     }
   | {
       name: 'stochrsi';
@@ -92,12 +97,12 @@ export type IndicatorOperand =
       stochasticPeriod?: number;
       kPeriod?: number;
       dPeriod?: number;
-      subField?: 'k' | 'd' | 'stochRSI'
+      subField: 'k' | 'd' | 'stochRSI'
     }
   | {
       name: 'pivotpoints';
       pivotType?: PivotPointsType;
-      subField?: 'pivot' | 'r1' | 'r2' | 'r3' | 'r4' | 's1' | 's2' | 's3' | 's4';
+      subField: 'pivot' | 'r1' | 'r2' | 'r3' | 'r4' | 's1' | 's2' | 's3' | 's4';
     };
 
 /**
