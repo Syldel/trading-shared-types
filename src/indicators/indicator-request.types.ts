@@ -71,7 +71,7 @@ export type IndicatorOperand =
       basePeriod?: number;
       spanPeriod?: number;
       displacement?: number;
-      subField: 'conversion' | 'base' | 'spanA' | 'spanB' | 'chikou'
+      subField: 'conversion' | 'base' | 'spanA' | 'spanB'
     }
   | {
       name: 'bb';

@@ -5,9 +5,15 @@ import type {
 } from '../exchange/exchange-config.interface.js';
 import {
   validateIndicatorOperand,
-  type IndicatorOperandIssue,
+  type IndicatorOperandIssueCode,
 } from '../indicators/indicator-subfields.js';
-import type { AdvancedStrategyParameters } from './strategy-engine.type.js';
+import {
+  COMPARISON_OPERATORS,
+  LOGICAL_OPERATORS,
+  PRICE_FIELDS,
+  TREND_DIRECTIONS,
+  type AdvancedStrategyParameters,
+} from './strategy-engine.type.js';
 
 /**
  * ============================================================================
@@ -25,10 +31,37 @@ import type { AdvancedStrategyParameters } from './strategy-engine.type.js';
  * ============================================================================
  */
 
-/** Anomalie d'opérande, située dans la structure de la stratégie. */
-export interface StrategyValidationIssue extends IndicatorOperandIssue {
-  /** Emplacement de l'opérande fautif (ex: `long.entry.conditions[0].left`). */
+/**
+ * Anomalies de forme de l'arbre de règles : type de nœud inconnu, opérateur
+ * hors énumération, groupe logique vide, période invalide, etc.
+ *
+ * Complémentaire aux codes `IndicatorOperandIssueCode` (qui portent sur la
+ * cohérence référentielle d'un opérande `indicator`) : ceux-ci portent sur la
+ * forme du nœud lui-même, avant même de savoir si c'est un opérande indicateur.
+ */
+export type StrategyStructureIssueCode =
+  | 'MISSING_NODE'
+  | 'UNKNOWN_NODE_TYPE'
+  | 'UNKNOWN_LOGICAL_OPERATOR'
+  | 'EMPTY_LOGICAL_CONDITIONS'
+  | 'UNKNOWN_COMPARISON_OPERATOR'
+  | 'MISSING_OPERAND'
+  | 'UNKNOWN_OPERAND_TYPE'
+  | 'INVALID_PRICE_FIELD'
+  | 'INVALID_NUMBER_OPERAND'
+  | 'UNKNOWN_TREND_DIRECTION'
+  | 'INVALID_TREND_PERIOD';
+
+/** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
+export interface StrategyValidationIssue {
+  /** Emplacement du nœud/opérande fautif (ex: `long.entry.conditions[0].left`). */
   path: string;
+  code: IndicatorOperandIssueCode | StrategyStructureIssueCode;
+  message: string;
+  /** Présents uniquement pour les anomalies d'opérande `indicator` (voir `validateIndicatorOperand`). */
+  indicator?: unknown;
+  subField?: unknown;
+  allowed?: readonly string[];
 }
 
 /** Une valeur de nœud/opérande telle qu'elle arrive du JSON : non typée. */
@@ -41,49 +74,193 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Valide un opérande unique s'il s'agit d'un opérande de type `indicator`.
- * Les opérandes `number` et `price` ne désignent jamais d'indicateur.
+ * Valide la forme d'un opérande (`price` | `indicator` | `number`), quel que
+ * soit l'emplacement d'où il est référencé (`comparison.left/right` ou
+ * `trend.target`).
  */
-function collectOperandIssues(
+function collectOperandStructureIssues(
   operand: unknown,
   path: string,
 ): StrategyValidationIssue[] {
   const node = asRecord(operand);
-  if (!node || node.type !== 'indicator') return [];
+  if (!node) {
+    return [
+      {
+        path,
+        code: 'MISSING_OPERAND',
+        message: `Missing operand at ${path}.`,
+      },
+    ];
+  }
 
-  const issue = validateIndicatorOperand(node);
-  return issue ? [{ ...issue, path }] : [];
+  switch (node.type) {
+    case 'price':
+      if (!PRICE_FIELDS.includes(node.field as (typeof PRICE_FIELDS)[number])) {
+        return [
+          {
+            path,
+            code: 'INVALID_PRICE_FIELD',
+            allowed: PRICE_FIELDS,
+            message:
+              `Unknown price field "${String(node.field)}" at ${path}. ` +
+              `Allowed: ${PRICE_FIELDS.join(', ')}.`,
+          },
+        ];
+      }
+      return [];
+
+    case 'number':
+      if (typeof node.value !== 'number' || !Number.isFinite(node.value)) {
+        return [
+          {
+            path,
+            code: 'INVALID_NUMBER_OPERAND',
+            message:
+              `Operand at ${path} has type "number" but "value" is not a ` +
+              `finite number (received: ${String(node.value)}).`,
+          },
+        ];
+      }
+      return [];
+
+    case 'indicator': {
+      const issue = validateIndicatorOperand(node);
+      return issue ? [{ ...issue, path }] : [];
+    }
+
+    default:
+      return [
+        {
+          path,
+          code: 'UNKNOWN_OPERAND_TYPE',
+          message:
+            `Unknown operand type "${String(node.type)}" at ${path}. ` +
+            `Allowed: price, indicator, number.`,
+        },
+      ];
+  }
 }
 
 /**
  * Parcourt récursivement un arbre de règles et collecte toutes les anomalies
- * d'opérandes indicateur qu'il contient.
+ * de structure (type de nœud, opérateur, arité) et d'opérandes indicateur
+ * qu'il contient.
+ *
+ * Un nœud invalide interrompt la descente sur cette branche (inutile de
+ * valider les enfants d'un groupe logique sans opérateur reconnu), mais pas
+ * sur les branches voisines.
  */
 export function collectRuleTreeIssues(
   node: RawNode | unknown,
   path = 'rule',
 ): StrategyValidationIssue[] {
   const current = asRecord(node);
-  if (!current) return [];
-
-  if (current.type === 'logical' && Array.isArray(current.conditions)) {
-    return current.conditions.flatMap((child, index) =>
-      collectRuleTreeIssues(child, `${path}.conditions[${index}]`),
-    );
-  }
-
-  if (current.type === 'comparison') {
+  if (!current) {
     return [
-      ...collectOperandIssues(current.left, `${path}.left`),
-      ...collectOperandIssues(current.right, `${path}.right`),
+      { path, code: 'MISSING_NODE', message: `Missing rule node at ${path}.` },
     ];
   }
 
-  if (current.type === 'trend') {
-    return collectOperandIssues(current.target, `${path}.target`);
-  }
+  switch (current.type) {
+    case 'logical': {
+      const issues: StrategyValidationIssue[] = [];
 
-  return [];
+      if (!LOGICAL_OPERATORS.includes(current.operator as (typeof LOGICAL_OPERATORS)[number])) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_LOGICAL_OPERATOR',
+          allowed: LOGICAL_OPERATORS,
+          message:
+            `Unknown logical operator "${String(current.operator)}" at ${path}. ` +
+            `Allowed: ${LOGICAL_OPERATORS.join(', ')}.`,
+        });
+      }
+
+      if (!Array.isArray(current.conditions) || current.conditions.length === 0) {
+        issues.push({
+          path,
+          code: 'EMPTY_LOGICAL_CONDITIONS',
+          message:
+            `Logical group at ${path} has no conditions. A group must ` +
+            `contain at least one condition.`,
+        });
+        return issues;
+      }
+
+      return [
+        ...issues,
+        ...current.conditions.flatMap((child, index) =>
+          collectRuleTreeIssues(child, `${path}.conditions[${index}]`),
+        ),
+      ];
+    }
+
+    case 'comparison': {
+      const issues: StrategyValidationIssue[] = [];
+
+      if (!COMPARISON_OPERATORS.includes(current.operator as (typeof COMPARISON_OPERATORS)[number])) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_COMPARISON_OPERATOR',
+          allowed: COMPARISON_OPERATORS,
+          message:
+            `Unknown comparison operator "${String(current.operator)}" at ${path}. ` +
+            `Allowed: ${COMPARISON_OPERATORS.join(', ')}.`,
+        });
+      }
+
+      return [
+        ...issues,
+        ...collectOperandStructureIssues(current.left, `${path}.left`),
+        ...collectOperandStructureIssues(current.right, `${path}.right`),
+      ];
+    }
+
+    case 'trend': {
+      const issues: StrategyValidationIssue[] = [];
+
+      if (!TREND_DIRECTIONS.includes(current.direction as (typeof TREND_DIRECTIONS)[number])) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_TREND_DIRECTION',
+          allowed: TREND_DIRECTIONS,
+          message:
+            `Unknown trend direction "${String(current.direction)}" at ${path}. ` +
+            `Allowed: ${TREND_DIRECTIONS.join(', ')}.`,
+        });
+      }
+
+      if (
+        typeof current.period !== 'number' ||
+        !Number.isInteger(current.period) ||
+        current.period < 1
+      ) {
+        issues.push({
+          path,
+          code: 'INVALID_TREND_PERIOD',
+          message:
+            `Trend period at ${path} must be an integer >= 1 ` +
+            `(received: ${String(current.period)}).`,
+        });
+      }
+
+      return [
+        ...issues,
+        ...collectOperandStructureIssues(current.target, `${path}.target`),
+      ];
+    }
+
+    default:
+      return [
+        {
+          path,
+          code: 'UNKNOWN_NODE_TYPE',
+          message:
+            `Unknown rule node type "${String(current.type)}" at ${path}. ` +
+            `Allowed: logical, comparison, trend.`,
+        },
+      ];
+  }
 }
 
 /** Valide une ancre d'ordre : seules les ancres `INDICATOR` sont concernées. */
@@ -104,6 +281,9 @@ export function collectAnchorIssues(
 /**
  * Valide les arbres de règles d'entrée/sortie d'une stratégie `advanced-rules`
  * exécutée directement (backtest, requête d'analyse).
+ *
+ * `exit` est optionnel par construction (`AdvancedStrategyParameters`) : son
+ * absence n'est pas une anomalie, elle n'est donc validée que si présente.
  */
 export function collectAdvancedParametersIssues(
   parameters: AdvancedStrategyParameters | undefined | null,
@@ -119,7 +299,9 @@ export function collectAdvancedParametersIssues(
 
     return [
       ...collectRuleTreeIssues(config.entry, `${path}.${side}.entry`),
-      ...collectRuleTreeIssues(config.exit, `${path}.${side}.exit`),
+      ...(config.exit
+        ? collectRuleTreeIssues(config.exit, `${path}.${side}.exit`)
+        : []),
     ];
   });
 }
@@ -136,10 +318,11 @@ export function collectStrategyIssues(
 
   const issues: StrategyValidationIssue[] = [];
 
-  // Arbres de règles du rule-builder
+  // Arbres de règles du rule-builder. `default: null` est un état légitime
+  // (paramètre pas encore configuré) : on ne valide que s'il est renseigné.
   if (Array.isArray(strategy.parameters)) {
     strategy.parameters.forEach((parameter, index) => {
-      if (parameter?.type !== 'rule-builder') return;
+      if (parameter?.type !== 'rule-builder' || !parameter.default) return;
       issues.push(
         ...collectRuleTreeIssues(
           parameter.default,
@@ -149,7 +332,9 @@ export function collectStrategyIssues(
     });
   }
 
-  // Ordres latents et protecteurs : ancre de prix + condition de déclenchement
+  // Ordres latents et protecteurs : ancre de prix + condition de déclenchement.
+  // `condition` absente signifie « toujours applicable » (voir
+  // `StrategyEngineService.evaluateCondition`) : ce n'est pas une anomalie.
   const groups = [
     { key: 'latent', entries: strategy.latent?.entries },
     { key: 'protective', entries: strategy.protective?.entries },
@@ -161,9 +346,11 @@ export function collectStrategyIssues(
     group.entries.forEach((entry, index) => {
       const entryPath = `${path}.${group.key}.entries[${index}]`;
       issues.push(...collectAnchorIssues(entry?.anchor, `${entryPath}.anchor`));
-      issues.push(
-        ...collectRuleTreeIssues(entry?.condition, `${entryPath}.condition`),
-      );
+      if (entry?.condition) {
+        issues.push(
+          ...collectRuleTreeIssues(entry.condition, `${entryPath}.condition`),
+        );
+      }
     });
   }
 

@@ -50,7 +50,6 @@ export const INDICATOR_SUBFIELDS = {
     { name: 'base', label: 'Kijun-Sen (Base Line)' },
     { name: 'spanA', label: 'Senkou Span A (Leading A)' },
     { name: 'spanB', label: 'Senkou Span B (Leading B)' },
-    { name: 'chikou', label: 'Chikou Span (Lagging Line)' },
   ],
   bb: [
     { name: 'upper', label: 'Upper Band' },

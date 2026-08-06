@@ -1,14 +1,23 @@
 import type { IndicatorOperand } from "../indicators/indicator-request.types";
 
-export type PriceField = 'open' | 'high' | 'low' | 'close' | 'volume';
+/**
+ * Valeurs valides des unions de l'AST, exposées comme constantes runtime
+ * (et non seulement comme types) pour servir de source unique à la fois au
+ * typage et à la validation structurelle (`strategy-validation.ts`).
+ */
+export const PRICE_FIELDS = ['open', 'high', 'low', 'close', 'volume'] as const;
+export type PriceField = typeof PRICE_FIELDS[number];
 
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }
   | ({ type: 'indicator' } & IndicatorOperand)
   | { type: 'number'; value: number };
 
-export type ComparisonOperator = 'GT' | 'GTE' | 'LT' | 'LTE' | 'EQ';
-export type LogicalOperator = 'AND' | 'OR';
+export const COMPARISON_OPERATORS = ['GT', 'GTE', 'LT', 'LTE', 'EQ'] as const;
+export type ComparisonOperator = typeof COMPARISON_OPERATORS[number];
+
+export const LOGICAL_OPERATORS = ['AND', 'OR'] as const;
+export type LogicalOperator = typeof LOGICAL_OPERATORS[number];
 
 // Une condition de comparaison pure (ex: EMA9 > SMA20)
 export interface ComparisonCondition {
@@ -47,7 +56,8 @@ export interface TimelineSignal {
   };
 }
 
-export type TrendDirection = 'UP' | 'DOWN';
+export const TREND_DIRECTIONS = ['UP', 'DOWN'] as const;
+export type TrendDirection = typeof TREND_DIRECTIONS[number];
 
 export interface TrendCondition {
   type: 'trend';
