@@ -1,6 +1,7 @@
 import type { ChartInterval } from "../chart.type";
 import type { IndicatorRequest } from "../indicators/indicator-request.types";
 import type { IndicatorSeriesType } from "../indicators/indicator-series.types";
+import type { BacktestSummary } from "../strategies/backtest-summary.type";
 import type { TimelineSignal } from "../strategies/strategy-engine.type";
 import type { AnalysisStrategyRequest } from "../strategies/strategy.types";
 import type { AnalysisCandle } from "./analysis-candle.type";
@@ -26,10 +27,11 @@ export interface AnalysisResponse {
   interval: ChartInterval;
   candles: AnalysisCandle[];
   indicators: Record<string, IndicatorSeriesType>;
-  strategies: { 
-    id: string; 
-    name: string; 
-    signals: TimelineSignal[] 
+  strategies: {
+    id: string;
+    name: string;
+    signals: TimelineSignal[];
+    summary: BacktestSummary;
   }[];
   summary: { 
     lastClose: number | null 
