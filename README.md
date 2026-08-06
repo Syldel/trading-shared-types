@@ -235,6 +235,14 @@ After 1.0.0, standard SemVer applies: PATCH = compatible fix, MINOR = compatible
 MAJOR = breaking change. Consumers should still pin to an exact tag either way (see above) —
 this policy tells you what changed, not whether it's safe to skip pinning.
 
+### Release & Commit Conventions
+
+We enforce a strict separation between code evolution and version management:
+
+- **Development Commits**: Use [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`). Feature commits should never alter version numbers or package manifests.
+- **Release Commits**: Versions are bumped via dedicated commits formatted as `chore(release): X.Y.Z`. These commits contain only version updates (`package.json`, lockfiles, changelog).
+- **Git Tags**: Every release commit is tagged with its version prefixed by `v` (`vX.Y.Z`).
+
 ## Future migration to a private npm registry
 
 When it's worth it (a 3rd consumer, a growing team, or you no longer want installs to
