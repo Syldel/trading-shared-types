@@ -218,15 +218,22 @@ What's different from a plain `git init && git add -A && git commit -m "init"`:
    npm install "git+ssh://git@github.com/Syldel/trading-shared-types.git#v0.x.y"
 ```
 
-### Semver rule to follow here
+### Versioning policy
 
-- **PATCH** (`0.1.0` → `0.1.1`): optional field addition, JSDoc, additive type that breaks nothing.
-- **MINOR** (`0.1.x` → `0.2.0`): new exported type/interface, new optional field on an existing interface.
-- **MAJOR** (`0.x.y` → `1.0.0`): renaming or removing a field, changing the shape of an existing type
-  (e.g. the possible future move from `{ type: 'indicator'; name; period }` to
-  `{ type: 'indicator'; indicator: { name; parameters } }` discussed earlier — **that's a
-  breaking change**, so a major bump, and both apps must migrate in the same window so a
-  strategy serialized by one version stays readable by the other).
+This package is under active development — no stable release yet.
+
+Until 1.0.0, we use a relaxed SemVer:
+
+- **PATCH** (`0.x.y`): bug fixes, documentation, internal refactoring — no type surface change.
+- **MINOR** (`0.y.0`): new features, API additions, **and breaking changes**. Anything that
+  changes the shape of an exported type is a MINOR bump, not a MAJOR one, while we're pre-1.0
+  (e.g. `0.6.0 → 0.7.0`: rebuilt `IOrderAnchor` as a discriminated union; `0.7.0 → 0.8.0`:
+  required `subField` on multi-output `IndicatorOperand`).
+- **MAJOR** (`1.0.0`): reserved for the first stable API — not yet reached.
+
+After 1.0.0, standard SemVer applies: PATCH = compatible fix, MINOR = compatible addition,
+MAJOR = breaking change. Consumers should still pin to an exact tag either way (see above) —
+this policy tells you what changed, not whether it's safe to skip pinning.
 
 ## Future migration to a private npm registry
 
