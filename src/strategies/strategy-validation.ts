@@ -2,6 +2,7 @@ import type {
   IExchangePair,
   IExchangeStrategy,
   IOrderAnchor,
+  StrategyParameter,
 } from '../exchange/exchange-config.interface.js';
 import {
   validateIndicatorOperand,
@@ -50,7 +51,9 @@ export type StrategyStructureIssueCode =
   | 'INVALID_PRICE_FIELD'
   | 'INVALID_NUMBER_OPERAND'
   | 'UNKNOWN_TREND_DIRECTION'
-  | 'INVALID_TREND_PERIOD';
+  | 'INVALID_TREND_PERIOD'
+  | 'INVALID_RULE_BUILDER_ID'
+  | 'EMPTY_STRATEGY_PARAMETERS';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -263,6 +266,73 @@ export function collectRuleTreeIssues(
   }
 }
 
+/**
+ * Un paramètre `rule-builder` n'est exploitable par le moteur que si son `id`
+ * suit la convention `long|short.entry|exit` : c'est ce que
+ * `mapExchangeStrategyToDto` (nest-trading-bot) utilise pour reconstituer
+ * `AdvancedStrategyParameters` à partir de la liste de paramètres. Un id hors
+ * convention n'est pas rejeté à l'exécution, il est silencieusement ignoré au
+ * mapping — d'où la nécessité de le signaler ici.
+ */
+const RULE_BUILDER_ID_PATTERN = /^(long|short)\.(entry|exit)$/;
+
+/**
+ * Valide les paramètres `rule-builder` d'une stratégie de paire et vérifie la
+ * cohérence par côté : un côté qui expose un `exit` configuré doit aussi
+ * exposer un `entry` (l'inverse du moteur, qui ne peut pas évaluer une sortie
+ * sans entrée — voir `AdvancedStrategyParameters`). Un côté totalement
+ * inconfiguré (aucun `default` renseigné) n'est pas une anomalie : c'est un
+ * état d'attente légitime avant configuration.
+ */
+function collectRuleBuilderParametersIssues(
+  parameters: StrategyParameter[] | undefined,
+  path: string,
+): StrategyValidationIssue[] {
+  const issues: StrategyValidationIssue[] = [];
+  const configuredBySide: Record<'long' | 'short', Set<'entry' | 'exit'>> = {
+    long: new Set(),
+    short: new Set(),
+  };
+
+  parameters?.forEach((parameter, index) => {
+    if (parameter?.type !== 'rule-builder') return;
+
+    const parameterPath = `${path}.parameters[${index}](${parameter.id})`;
+    const match = RULE_BUILDER_ID_PATTERN.exec(parameter.id ?? '');
+
+    if (!match) {
+      issues.push({
+        path: parameterPath,
+        code: 'INVALID_RULE_BUILDER_ID',
+        message:
+          `Rule-builder parameter id "${String(parameter.id)}" at ${parameterPath} ` +
+          `does not follow the "long|short.entry|exit" convention the trading ` +
+          `engine relies on to map parameters to a side. It will be silently ` +
+          `ignored at execution.`,
+      });
+      return;
+    }
+
+    // `default: null` est un état légitime (paramètre pas encore configuré).
+    if (!parameter.default) return;
+
+    const side = match[1] as 'long' | 'short';
+    const action = match[2] as 'entry' | 'exit';
+    configuredBySide[side].add(action);
+
+    issues.push(...collectRuleTreeIssues(parameter.default, parameterPath));
+  });
+
+  (['long', 'short'] as const).forEach((side) => {
+    const configured = configuredBySide[side];
+    if (configured.has('exit') && !configured.has('entry')) {
+      issues.push(...collectRuleTreeIssues(undefined, `${path}.${side}.entry`));
+    }
+  });
+
+  return issues;
+}
+
 /** Valide une ancre d'ordre : seules les ancres `INDICATOR` sont concernées. */
 export function collectAnchorIssues(
   anchor: IOrderAnchor | undefined,
@@ -284,12 +354,27 @@ export function collectAnchorIssues(
  *
  * `exit` est optionnel par construction (`AdvancedStrategyParameters`) : son
  * absence n'est pas une anomalie, elle n'est donc validée que si présente.
+ *
+ * En revanche, une stratégie sans `long` ni `short` du tout n'a rien à
+ * évaluer : `StrategyEngineService.execute` renverrait silencieusement un
+ * tableau de signaux vide. Sur ce chemin d'exécution directe, mieux vaut un
+ * rejet explicite qu'une réponse 200 vide qui masque une requête mal formée.
  */
 export function collectAdvancedParametersIssues(
   parameters: AdvancedStrategyParameters | undefined | null,
   path = 'parameters',
 ): StrategyValidationIssue[] {
-  if (!parameters) return [];
+  if (!parameters || (!parameters.long && !parameters.short)) {
+    return [
+      {
+        path,
+        code: 'EMPTY_STRATEGY_PARAMETERS',
+        message:
+          `Strategy at ${path} has neither "long" nor "short" configuration: ` +
+          `there is nothing to evaluate.`,
+      },
+    ];
+  }
 
   const sides = ['long', 'short'] as const;
 
@@ -316,21 +401,9 @@ export function collectStrategyIssues(
 ): StrategyValidationIssue[] {
   if (!strategy) return [];
 
-  const issues: StrategyValidationIssue[] = [];
-
-  // Arbres de règles du rule-builder. `default: null` est un état légitime
-  // (paramètre pas encore configuré) : on ne valide que s'il est renseigné.
-  if (Array.isArray(strategy.parameters)) {
-    strategy.parameters.forEach((parameter, index) => {
-      if (parameter?.type !== 'rule-builder' || !parameter.default) return;
-      issues.push(
-        ...collectRuleTreeIssues(
-          parameter.default,
-          `${path}.parameters[${index}](${parameter.id})`,
-        ),
-      );
-    });
-  }
+  const issues: StrategyValidationIssue[] = [
+    ...collectRuleBuilderParametersIssues(strategy.parameters, path),
+  ];
 
   // Ordres latents et protecteurs : ancre de prix + condition de déclenchement.
   // `condition` absente signifie « toujours applicable » (voir

@@ -282,6 +282,23 @@ describe('collectAdvancedParametersIssues', () => {
       'parameters.long.exit.target',
     ]);
   });
+
+  // Une stratégie sans long ni short n'a rien à évaluer : sur le chemin
+  // d'exécution directe (backtest), c'est un rejet explicite plutôt qu'une
+  // réponse vide silencieuse.
+  it.each([undefined, null, {}])(
+    'rejects an empty configuration (%p)',
+    (parameters) => {
+      const issues = collectAdvancedParametersIssues(parameters as never);
+      expect(issues).toEqual([
+        {
+          path: 'parameters',
+          code: 'EMPTY_STRATEGY_PARAMETERS',
+          message: expect.any(String),
+        },
+      ]);
+    },
+  );
 });
 
 describe('collectPairIssues', () => {
@@ -347,7 +364,7 @@ describe('collectPairIssues', () => {
         shortname: 'advanced-rules',
         parameters: [
           {
-            id: 'long',
+            id: 'long.entry',
             label: 'Long entry',
             type: 'rule-builder',
             default: {
@@ -362,7 +379,9 @@ describe('collectPairIssues', () => {
     );
 
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.path).toBe('BTC.strategy.parameters[0](long).left');
+    expect(issues[0]!.path).toBe(
+      'BTC.strategy.parameters[0](long.entry).left',
+    );
   });
 
   it('returns nothing for a pair without strategy', () => {
@@ -375,7 +394,92 @@ describe('collectPairIssues', () => {
         name: 'Advanced',
         shortname: 'advanced-rules',
         parameters: [
-          { id: 'long', label: 'Long entry', type: 'rule-builder', default: null },
+          {
+            id: 'long.entry',
+            label: 'Long entry',
+            type: 'rule-builder',
+            default: null,
+          },
+        ],
+      }),
+    );
+
+    expect(issues).toEqual([]);
+  });
+
+  it('rejects a rule-builder parameter id outside the long|short.entry|exit convention', () => {
+    const issues = collectPairIssues(
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        parameters: [
+          {
+            id: 'long-entry',
+            label: 'Long entry',
+            type: 'rule-builder',
+            default: {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'price', field: 'close' },
+              right: { type: 'number', value: 0 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('INVALID_RULE_BUILDER_ID');
+    expect(issues[0]!.path).toBe('BTC.strategy.parameters[0](long-entry)');
+  });
+
+  it('rejects a configured exit without a matching entry on the same side', () => {
+    const issues = collectPairIssues(
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        parameters: [
+          {
+            id: 'short.exit',
+            label: 'Short exit',
+            type: 'rule-builder',
+            default: {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'price', field: 'close' },
+              right: { type: 'number', value: 0 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(issues).toEqual([
+      {
+        path: 'BTC.strategy.short.entry',
+        code: 'MISSING_NODE',
+        message: expect.any(String),
+      },
+    ]);
+  });
+
+  it('tolerates a side with only an entry configured', () => {
+    const issues = collectPairIssues(
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        parameters: [
+          {
+            id: 'long.entry',
+            label: 'Long entry',
+            type: 'rule-builder',
+            default: {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'price', field: 'close' },
+              right: { type: 'number', value: 0 },
+            },
+          },
         ],
       }),
     );
