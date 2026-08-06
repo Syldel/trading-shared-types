@@ -33,19 +33,25 @@
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
+    "test": "jest",
     "clean": "rm -rf dist",
-    "verify": "npm run typecheck && npm run lint && npm run build",
+    "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "prepare": "npm run build",
     "prepublishOnly": "npm run verify",
     "husky:init": "husky"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "tsup": "^8.3.5",
-    "eslint": "^9.17.0",
     "@eslint/js": "^9.17.0",
-    "typescript-eslint": "^8.18.1",
-    "husky": "^9.1.7"
+    "@jest/globals": "^30.4.1",
+    "@swc/core": "^1.15.47",
+    "@swc/jest": "^0.2.39",
+    "@types/jest": "^30.0.0",
+    "eslint": "^9.17.0",
+    "husky": "^9.1.7",
+    "jest": "^30.4.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
   },
   "engines": {
     "node": ">=20"
