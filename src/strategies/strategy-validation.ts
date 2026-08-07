@@ -445,3 +445,43 @@ export function formatStrategyIssues(
     .map((issue) => `[${issue.code}] ${issue.path}: ${issue.message}`)
     .join(' | ');
 }
+
+/**
+ * Sous-ensemble de `StrategyValidationIssue` destiné à traverser une
+ * frontière HTTP. `indicator` / `subField` sont typés `unknown` — des détails
+ * de diagnostic interne (voir `validateIndicatorOperand`), pas des valeurs
+ * qu'un client peut exploiter tel quel.
+ */
+export type PublicStrategyValidationIssue = Pick<
+  StrategyValidationIssue,
+  'code' | 'path' | 'message' | 'allowed'
+>;
+
+/**
+ * Réponse d'une validation de stratégie, telle qu'exposée à un client (ex:
+ * `POST /exchanges/strategies/validate` dans nest-trading-bot).
+ */
+export interface StrategyValidationResult {
+  valid: boolean;
+  issues: PublicStrategyValidationIssue[];
+}
+
+/**
+ * Construit l'enveloppe `StrategyValidationResult` à partir d'un ensemble
+ * d'anomalies. Point d'application unique de la troncature vers
+ * `PublicStrategyValidationIssue`, pour que chaque consommateur HTTP (bot,
+ * app mobile) expose exactement les mêmes champs sans redéfinir la liste.
+ */
+export function toStrategyValidationResult(
+  issues: readonly StrategyValidationIssue[],
+): StrategyValidationResult {
+  return {
+    valid: issues.length === 0,
+    issues: issues.map(({ code, path, message, allowed }) => ({
+      code,
+      path,
+      message,
+      allowed,
+    })),
+  };
+}

@@ -4,6 +4,7 @@ import {
   collectAdvancedParametersIssues,
   collectPairIssues,
   collectRuleTreeIssues,
+  toStrategyValidationResult,
 } from './strategy-validation.js';
 
 describe('collectRuleTreeIssues', () => {
@@ -509,5 +510,39 @@ describe('collectPairIssues', () => {
     );
 
     expect(issues).toEqual([]);
+  });
+});
+
+describe('toStrategyValidationResult', () => {
+  it('reports valid: true and no issues for an empty set', () => {
+    expect(toStrategyValidationResult([])).toEqual({
+      valid: true,
+      issues: [],
+    });
+  });
+
+  it('reports valid: false and strips indicator/subField from each issue', () => {
+    const result = toStrategyValidationResult([
+      {
+        path: 'strategy.long.entry.left',
+        code: 'MISSING_SUBFIELD',
+        message: 'Indicator "adx" requires an explicit subField.',
+        indicator: { name: 'adx' },
+        subField: undefined,
+        allowed: ['adx', 'pdi', 'mdi'],
+      },
+    ]);
+
+    expect(result).toEqual({
+      valid: false,
+      issues: [
+        {
+          path: 'strategy.long.entry.left',
+          code: 'MISSING_SUBFIELD',
+          message: 'Indicator "adx" requires an explicit subField.',
+          allowed: ['adx', 'pdi', 'mdi'],
+        },
+      ],
+    });
   });
 });
