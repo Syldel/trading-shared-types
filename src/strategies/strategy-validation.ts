@@ -53,7 +53,8 @@ export type StrategyStructureIssueCode =
   | 'UNKNOWN_TREND_DIRECTION'
   | 'INVALID_TREND_PERIOD'
   | 'INVALID_RULE_BUILDER_ID'
-  | 'EMPTY_STRATEGY_PARAMETERS';
+  | 'EMPTY_STRATEGY_PARAMETERS'
+  | 'INVALID_PARAMETERS_SHAPE';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -285,16 +286,40 @@ const RULE_BUILDER_ID_PATTERN = /^(long|short)\.(entry|exit)$/;
  * état d'attente légitime avant configuration.
  */
 function collectRuleBuilderParametersIssues(
-  parameters: StrategyParameter[] | undefined,
+  parameters: unknown,
   path: string,
 ): StrategyValidationIssue[] {
+  // `undefined`/`null` : état légitime (stratégie sans paramètre configurable
+  // pour l'instant). Toute autre forme non-tableau est une anomalie : le cas
+  // le plus fréquent est l'envoi d'un `AdvancedStrategyParameters` (la forme
+  // `{ long, short }` attendue par `POST /analysis`) là où
+  // `IExchangeStrategy.parameters` — un tableau de `StrategyParameter` — était
+  // attendu. Sans cette garde, `.forEach` plante avec un TypeError opaque au
+  // lieu de produire un diagnostic exploitable.
+  if (parameters === undefined || parameters === null) return [];
+
+  if (!Array.isArray(parameters)) {
+    return [
+      {
+        path: `${path}.parameters`,
+        code: 'INVALID_PARAMETERS_SHAPE',
+        message:
+          `Expected "parameters" at ${path}.parameters to be an array of ` +
+          `rule-builder parameter definitions (StrategyParameter[]), but ` +
+          `received ${typeof parameters}. This looks like ` +
+          `AdvancedStrategyParameters (the { long, short } shape consumed by ` +
+          `POST /analysis) was sent where IExchangeStrategy.parameters was expected.`,
+      },
+    ];
+  }
+
   const issues: StrategyValidationIssue[] = [];
   const configuredBySide: Record<'long' | 'short', Set<'entry' | 'exit'>> = {
     long: new Set(),
     short: new Set(),
   };
 
-  parameters?.forEach((parameter, index) => {
+  (parameters as StrategyParameter[]).forEach((parameter, index) => {
     if (parameter?.type !== 'rule-builder') return;
 
     const parameterPath = `${path}.parameters[${index}](${parameter.id})`;

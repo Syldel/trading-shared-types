@@ -389,6 +389,38 @@ describe('collectPairIssues', () => {
     expect(collectPairIssues(pairWith(undefined))).toEqual([]);
   });
 
+  // Reproduit un cas réel : AdvancedStrategyParameters (`{ long, short }`,
+  // attendu par POST /analysis) envoyé là où IExchangeStrategy.parameters
+  // (un tableau) était attendu. Avant garde explicite, ceci plantait avec un
+  // TypeError opaque (`parameters?.forEach is not a function`) au lieu de
+  // produire un diagnostic.
+  it('reports a clear issue instead of throwing when parameters is not an array', () => {
+    const issues = collectPairIssues(
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        parameters: {
+          long: {
+            entry: {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'indicator', name: 'adx', period: 14 },
+              right: { type: 'number', value: 25 },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(issues).toEqual([
+      {
+        path: 'BTC.strategy.parameters',
+        code: 'INVALID_PARAMETERS_SHAPE',
+        message: expect.any(String),
+      },
+    ]);
+  });
+
   it('tolerates an unconfigured rule-builder parameter (default: null)', () => {
     const issues = collectPairIssues(
       pairWith({
