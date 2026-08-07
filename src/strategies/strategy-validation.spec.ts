@@ -1,10 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
 import type { IExchangePair } from '../exchange/exchange-config.interface.js';
 import {
-  collectAdvancedParametersIssues,
+  collectExecutableStrategyRulesIssues,
   collectPairIssues,
   collectRuleTreeIssues,
+  collectStrategyRulesIssues,
   toStrategyValidationResult,
+  type StrategyValidationIssue,
 } from './strategy-validation.js';
 
 describe('collectRuleTreeIssues', () => {
@@ -226,12 +228,11 @@ describe('collectRuleTreeIssues', () => {
     );
 
     it('does not flag an absent optional field as a missing node', () => {
-      // `exit` (AdvancedStrategyParameters) et `default` (paramètre
-      // rule-builder non configuré) sont des absences légitimes : c'est aux
-      // call sites de ne pas appeler `collectRuleTreeIssues` dessus, pas à
+      // `exit` est une absence légitime (optionnel dans `SideRules`) : c'est
+      // aux call sites de ne pas appeler `collectRuleTreeIssues` dessus, pas à
       // la fonction de les tolérer en silence.
       expect(
-        collectAdvancedParametersIssues({
+        collectStrategyRulesIssues({
           long: {
             entry: {
               type: 'logical',
@@ -253,9 +254,9 @@ describe('collectRuleTreeIssues', () => {
   });
 });
 
-describe('collectAdvancedParametersIssues', () => {
+describe('collectStrategyRulesIssues', () => {
   it('covers both sides and both entry and exit trees', () => {
-    const issues = collectAdvancedParametersIssues({
+    const issues = collectStrategyRulesIssues({
       long: {
         entry: {
           type: 'logical',
@@ -278,28 +279,47 @@ describe('collectAdvancedParametersIssues', () => {
       },
     });
 
-    expect(issues.map((i) => i.path)).toEqual([
-      'parameters.long.entry.conditions[0].left',
-      'parameters.long.exit.target',
+    expect(issues.map((i: StrategyValidationIssue) => i.path)).toEqual([
+      'rules.long.entry.conditions[0].left',
+      'rules.long.exit.target',
     ]);
   });
 
-  // Une stratégie sans long ni short n'a rien à évaluer : sur le chemin
-  // d'exécution directe (backtest), c'est un rejet explicite plutôt qu'une
-  // réponse vide silencieuse.
-  it.each([undefined, null, {}])(
-    'rejects an empty configuration (%p)',
-    (parameters) => {
-      const issues = collectAdvancedParametersIssues(parameters as never);
-      expect(issues).toEqual([
-        {
-          path: 'parameters',
-          code: 'EMPTY_STRATEGY_PARAMETERS',
-          message: expect.any(String),
-        },
-      ]);
-    },
-  );
+  // Tolérant par conception : une stratégie codée en dur n'a aucune règle.
+  it.each([undefined, null, {}])('tolerates an absent rule set (%p)', (rules) => {
+    expect(collectStrategyRulesIssues(rules as never)).toEqual([]);
+  });
+});
+
+describe('collectExecutableStrategyRulesIssues', () => {
+  // Sur le chemin d'exécution directe (backtest), l'absence de règles est un
+  // rejet explicite plutôt qu'une réponse vide silencieuse.
+  it.each([undefined, null, {}])('rejects an empty rule set (%p)', (rules) => {
+    expect(collectExecutableStrategyRulesIssues(rules as never)).toEqual([
+      {
+        path: 'rules',
+        code: 'EMPTY_STRATEGY_RULES',
+        message: expect.any(String),
+      },
+    ]);
+  });
+
+  it('validates the trees once at least one side is present', () => {
+    const issues = collectExecutableStrategyRulesIssues({
+      short: {
+        entry: {
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'indicator', name: 'adx' },
+          right: { type: 'number', value: 25 },
+        } as never,
+      },
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+    expect(issues[0]!.path).toBe('rules.short.entry.left');
+  });
 });
 
 describe('collectPairIssues', () => {
@@ -358,142 +378,43 @@ describe('collectPairIssues', () => {
     expect(issues).toEqual([]);
   });
 
-  it('inspects rule-builder parameters', () => {
+  it('inspects the rule trees', () => {
     const issues = collectPairIssues(
       pairWith({
         name: 'Advanced',
         shortname: 'advanced-rules',
-        parameters: [
-          {
-            id: 'long.entry',
-            label: 'Long entry',
-            type: 'rule-builder',
-            default: {
+        rules: {
+          long: {
+            entry: {
               type: 'comparison',
               operator: 'GT',
               left: { type: 'indicator', name: 'supertrend' },
               right: { type: 'number', value: 0 },
             },
           },
-        ],
+        },
       }),
     );
 
     expect(issues).toHaveLength(1);
-    expect(issues[0]!.path).toBe(
-      'BTC.strategy.parameters[0](long.entry).left',
-    );
+    expect(issues[0]!.path).toBe('BTC.strategy.rules.long.entry.left');
   });
 
   it('returns nothing for a pair without strategy', () => {
     expect(collectPairIssues(pairWith(undefined))).toEqual([]);
   });
 
-  // Reproduit un cas réel : AdvancedStrategyParameters (`{ long, short }`,
-  // attendu par POST /analysis) envoyé là où IExchangeStrategy.parameters
-  // (un tableau) était attendu. Avant garde explicite, ceci plantait avec un
-  // TypeError opaque (`parameters?.forEach is not a function`) au lieu de
-  // produire un diagnostic.
-  it('reports a clear issue instead of throwing when parameters is not an array', () => {
+  // Une strategie codee en dur (tol-langit & co) n'a legitimement aucune
+  // regle : son absence ne doit pas ecarter la paire du trading.
+  it('tolerates a strategy carrying no rules at all', () => {
     const issues = collectPairIssues(
       pairWith({
-        name: 'Advanced',
-        shortname: 'advanced-rules',
-        parameters: {
-          long: {
-            entry: {
-              type: 'comparison',
-              operator: 'GT',
-              left: { type: 'indicator', name: 'adx', period: 14 },
-              right: { type: 'number', value: 25 },
-            },
-          },
-        },
-      }),
-    );
-
-    expect(issues).toEqual([
-      {
-        path: 'BTC.strategy.parameters',
-        code: 'INVALID_PARAMETERS_SHAPE',
-        message: expect.any(String),
-      },
-    ]);
-  });
-
-  it('tolerates an unconfigured rule-builder parameter (default: null)', () => {
-    const issues = collectPairIssues(
-      pairWith({
-        name: 'Advanced',
-        shortname: 'advanced-rules',
-        parameters: [
-          {
-            id: 'long.entry',
-            label: 'Long entry',
-            type: 'rule-builder',
-            default: null,
-          },
-        ],
+        name: 'Tol Langit',
+        shortname: 'tol-langit-atr-v7-pro',
       }),
     );
 
     expect(issues).toEqual([]);
-  });
-
-  it('rejects a rule-builder parameter id outside the long|short.entry|exit convention', () => {
-    const issues = collectPairIssues(
-      pairWith({
-        name: 'Advanced',
-        shortname: 'advanced-rules',
-        parameters: [
-          {
-            id: 'long-entry',
-            label: 'Long entry',
-            type: 'rule-builder',
-            default: {
-              type: 'comparison',
-              operator: 'GT',
-              left: { type: 'price', field: 'close' },
-              right: { type: 'number', value: 0 },
-            },
-          },
-        ],
-      }),
-    );
-
-    expect(issues).toHaveLength(1);
-    expect(issues[0]!.code).toBe('INVALID_RULE_BUILDER_ID');
-    expect(issues[0]!.path).toBe('BTC.strategy.parameters[0](long-entry)');
-  });
-
-  it('rejects a configured exit without a matching entry on the same side', () => {
-    const issues = collectPairIssues(
-      pairWith({
-        name: 'Advanced',
-        shortname: 'advanced-rules',
-        parameters: [
-          {
-            id: 'short.exit',
-            label: 'Short exit',
-            type: 'rule-builder',
-            default: {
-              type: 'comparison',
-              operator: 'GT',
-              left: { type: 'price', field: 'close' },
-              right: { type: 'number', value: 0 },
-            },
-          },
-        ],
-      }),
-    );
-
-    expect(issues).toEqual([
-      {
-        path: 'BTC.strategy.short.entry',
-        code: 'MISSING_NODE',
-        message: expect.any(String),
-      },
-    ]);
   });
 
   it('tolerates a side with only an entry configured', () => {
@@ -501,19 +422,30 @@ describe('collectPairIssues', () => {
       pairWith({
         name: 'Advanced',
         shortname: 'advanced-rules',
-        parameters: [
-          {
-            id: 'long.entry',
-            label: 'Long entry',
-            type: 'rule-builder',
-            default: {
+        rules: {
+          long: {
+            entry: {
               type: 'comparison',
               operator: 'GT',
               left: { type: 'price', field: 'close' },
               right: { type: 'number', value: 0 },
             },
           },
-        ],
+        },
+      }),
+    );
+
+    expect(issues).toEqual([]);
+  });
+
+  // `settings` est volontairement hors du perimetre fail-closed tant qu'aucun
+  // consommateur ne le lit : un reglage inerte ne doit pas couper le trading.
+  it('ignores settings entirely', () => {
+    const issues = collectPairIssues(
+      pairWith({
+        name: 'Tol Langit',
+        shortname: 'tol-langit-atr-v7-pro',
+        settings: { atrPeriod: 14, useAdaptiveMultiplier: true },
       }),
     );
 

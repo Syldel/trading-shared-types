@@ -1,6 +1,51 @@
 import type { ChartInterval } from "../chart.type";
-import type { AnchorSource, ExitBehavior, OrderExecutionType, StrategyParameter, TpslType } from "./exchange-config.interface";
+import type { AnchorSource, ExitBehavior, OrderExecutionType, TpslType } from "./exchange-config.interface";
+import type { LogicalGroup } from "../strategies/strategy-engine.type";
 import type { IndicatorMetadata } from "./indicator-meta.type";
+
+// ─── STRATEGY FORM SCHEMA ────────────────────────────────────────────────────
+// Ce fichier décrit *comment construire* une stratégie dans une interface.
+// Les données que l'utilisateur produit ainsi vivent dans `IExchangeStrategy`
+// (`exchange-config.interface.ts`) — ne jamais mélanger les deux.
+
+interface BaseStrategyParameter {
+  /**
+   * Identifiant du champ. Pour un `rule-builder`, désigne la branche de
+   * `StrategyRules` alimentée par ce champ (`long.entry`, `short.exit`) ; pour
+   * les autres types, la clé correspondante dans `StrategySettings`.
+   */
+  id: string;
+  label: string;
+  description?: string;
+  enabled?: boolean;
+}
+
+/**
+ * Description d'un champ de formulaire de stratégie.
+ *
+ * `defaultValue` signifie bien ici « valeur pré-remplie du champ », et rien
+ * d'autre — même convention que `IndicatorParameter`. La valeur *saisie* par
+ * l'utilisateur n'est jamais stockée ici : elle atterrit dans
+ * `IExchangeStrategy.rules` ou `IExchangeStrategy.settings`.
+ */
+export type StrategyParameter =
+  | (BaseStrategyParameter & {
+      type: 'number';
+      defaultValue: number;
+    })
+  | (BaseStrategyParameter & {
+      type: 'boolean';
+      defaultValue: boolean;
+    })
+  | (BaseStrategyParameter & {
+      type: 'select';
+      options: { label: string; value: string | number }[];
+      defaultValue: string | number;
+    })
+  | (BaseStrategyParameter & {
+      type: 'rule-builder';
+      defaultValue: LogicalGroup | null;
+    });
 
 export interface StrategyMeta {
   name: string;

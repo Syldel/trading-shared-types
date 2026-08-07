@@ -1,44 +1,40 @@
 import type { ChartInterval } from '../chart.type.js';
-import type { LogicalGroup, RuleNode } from '../strategies/strategy-engine.type.js';
+import type {
+  RuleNode,
+  StrategyRules,
+  StrategySettings,
+} from '../strategies/strategy-engine.type.js';
 import type { IndicatorOperand } from '../indicators/indicator-request.types.js';
 
 export type ExitBehavior = 'STRATEGY_SIGNAL' | 'EXIT_ON_PROFIT_ONLY' | 'NEVER';
 
 // ─── CORE STRATEGY STRUCTURE ─────────────────────────────────────────────────
 
-interface BaseParameter {
-  id: string;
-  label: string;
-  description?: string;
-  enabled?: boolean;
-}
-
-export type StrategyParameter =
-  | (BaseParameter & {
-      type: 'number';
-      default: number;
-    })
-  | (BaseParameter & {
-      type: 'boolean';
-      default: boolean;
-    })
-  | (BaseParameter & {
-      type: 'select';
-      options: { label: string; value: any }[];
-      default: any;
-    })
-  | (BaseParameter & {
-      type: 'rule-builder';
-      default: LogicalGroup | null;
-    });
-
+/**
+ * La stratégie **configurée par un utilisateur** pour une paire : uniquement
+ * des données métier, aucune métadonnée d'affichage.
+ *
+ * À ne pas confondre avec `StrategyMeta` (`exchange-meta.type.ts`), qui décrit
+ * comment construire une stratégie dans un formulaire — quels champs existent,
+ * leurs libellés et leurs valeurs par défaut. La distinction est structurante :
+ * ces deux objets ont été confondus par le passé, ce qui menait un même champ
+ * (`default`) à signifier « valeur initiale du formulaire » côté frontend et
+ * « les règles configurées par l'utilisateur » côté backend.
+ *
+ * Correspondance entre les deux : chaque paramètre `rule-builder` de
+ * `StrategyMeta` alimente une branche de `rules` ; chaque paramètre
+ * `number` / `boolean` / `select` alimente une entrée de `settings`.
+ */
 export interface IExchangeStrategy {
   name: string;
   shortname: string;
   description?: string;
+  /** Arbres de règles. Absent pour les stratégies codées en dur (non `advanced-rules`). */
+  rules?: StrategyRules;
+  /** Réglages scalaires. Voir `StrategySettings`. */
+  settings?: StrategySettings;
   latent?: LatentOrderStrategy;
   protective?: ProtectiveOrderStrategy;
-  parameters?: StrategyParameter[];
 }
 
 export type IExchange = {

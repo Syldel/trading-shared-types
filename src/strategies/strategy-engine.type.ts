@@ -34,16 +34,50 @@ export interface LogicalGroup {
   conditions: RuleNode[];
 }
 
-export interface AdvancedStrategyParameters {
-  long?: {
-    entry: LogicalGroup;
-    exit?: LogicalGroup;
-  };
-  short?: {
-    entry: LogicalGroup;
-    exit?: LogicalGroup;
-  };
+/**
+ * Règles d'un côté du marché. `entry` est obligatoire : une sortie ne peut
+ * pas être évaluée sans l'entrée correspondante, le moteur n'aurait rien à
+ * fermer. Cette contrainte est portée par le type, elle n'a donc pas à être
+ * revalidée à l'exécution.
+ */
+export interface SideRules {
+  entry: LogicalGroup;
+  exit?: LogicalGroup;
 }
+
+/**
+ * Les arbres de règles d'une stratégie, sous leur forme **unique** : c'est
+ * exactement cet objet qui est stocké dans la configuration utilisateur,
+ * validé, envoyé à `POST /analysis` pour backtest, et exécuté par le moteur.
+ *
+ * Les deux côtés sont optionnels — une stratégie peut n'exploiter que le long
+ * ou que le short — mais une stratégie `advanced-rules` sans aucun des deux
+ * n'a rien à évaluer (voir `collectExecutableStrategyRulesIssues`).
+ */
+export interface StrategyRules {
+  long?: SideRules;
+  short?: SideRules;
+}
+
+/**
+ * Valeur d'un réglage scalaire de stratégie. Volontairement limité aux
+ * primitives : tout ce qui a une structure (arbre de règles, ancre) a son
+ * propre type dédié et n'a rien à faire ici.
+ */
+export type StrategySettingValue = number | boolean | string;
+
+/**
+ * Réglages scalaires d'une stratégie, par nom de réglage (ex: `atrPeriod`,
+ * `useAdaptiveMultiplier`). Pendant « données utilisateur » des paramètres
+ * `number` / `boolean` / `select` décrits par `StrategyParameter` dans le
+ * schéma de formulaire.
+ *
+ * Destiné aux stratégies codées en dur (`tol-langit-atr-v7-pro` et consorts),
+ * dont les réglages ne sont aujourd'hui pas configurables. Aucun consommateur
+ * ne les lit encore : voir la note sur la validation dans
+ * `collectStrategyIssues`.
+ */
+export type StrategySettings = Record<string, StrategySettingValue>;
 
 export interface TimelineSignal {
   time: number;

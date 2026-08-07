@@ -2,7 +2,6 @@ import type {
   IExchangePair,
   IExchangeStrategy,
   IOrderAnchor,
-  StrategyParameter,
 } from '../exchange/exchange-config.interface.js';
 import {
   validateIndicatorOperand,
@@ -13,7 +12,7 @@ import {
   LOGICAL_OPERATORS,
   PRICE_FIELDS,
   TREND_DIRECTIONS,
-  type AdvancedStrategyParameters,
+  type StrategyRules,
 } from './strategy-engine.type.js';
 
 /**
@@ -52,9 +51,7 @@ export type StrategyStructureIssueCode =
   | 'INVALID_NUMBER_OPERAND'
   | 'UNKNOWN_TREND_DIRECTION'
   | 'INVALID_TREND_PERIOD'
-  | 'INVALID_RULE_BUILDER_ID'
-  | 'EMPTY_STRATEGY_PARAMETERS'
-  | 'INVALID_PARAMETERS_SHAPE';
+  | 'EMPTY_STRATEGY_RULES';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -267,97 +264,6 @@ export function collectRuleTreeIssues(
   }
 }
 
-/**
- * Un paramètre `rule-builder` n'est exploitable par le moteur que si son `id`
- * suit la convention `long|short.entry|exit` : c'est ce que
- * `mapExchangeStrategyToDto` (nest-trading-bot) utilise pour reconstituer
- * `AdvancedStrategyParameters` à partir de la liste de paramètres. Un id hors
- * convention n'est pas rejeté à l'exécution, il est silencieusement ignoré au
- * mapping — d'où la nécessité de le signaler ici.
- */
-const RULE_BUILDER_ID_PATTERN = /^(long|short)\.(entry|exit)$/;
-
-/**
- * Valide les paramètres `rule-builder` d'une stratégie de paire et vérifie la
- * cohérence par côté : un côté qui expose un `exit` configuré doit aussi
- * exposer un `entry` (l'inverse du moteur, qui ne peut pas évaluer une sortie
- * sans entrée — voir `AdvancedStrategyParameters`). Un côté totalement
- * inconfiguré (aucun `default` renseigné) n'est pas une anomalie : c'est un
- * état d'attente légitime avant configuration.
- */
-function collectRuleBuilderParametersIssues(
-  parameters: unknown,
-  path: string,
-): StrategyValidationIssue[] {
-  // `undefined`/`null` : état légitime (stratégie sans paramètre configurable
-  // pour l'instant). Toute autre forme non-tableau est une anomalie : le cas
-  // le plus fréquent est l'envoi d'un `AdvancedStrategyParameters` (la forme
-  // `{ long, short }` attendue par `POST /analysis`) là où
-  // `IExchangeStrategy.parameters` — un tableau de `StrategyParameter` — était
-  // attendu. Sans cette garde, `.forEach` plante avec un TypeError opaque au
-  // lieu de produire un diagnostic exploitable.
-  if (parameters === undefined || parameters === null) return [];
-
-  if (!Array.isArray(parameters)) {
-    return [
-      {
-        path: `${path}.parameters`,
-        code: 'INVALID_PARAMETERS_SHAPE',
-        message:
-          `Expected "parameters" at ${path}.parameters to be an array of ` +
-          `rule-builder parameter definitions (StrategyParameter[]), but ` +
-          `received ${typeof parameters}. This looks like ` +
-          `AdvancedStrategyParameters (the { long, short } shape consumed by ` +
-          `POST /analysis) was sent where IExchangeStrategy.parameters was expected.`,
-      },
-    ];
-  }
-
-  const issues: StrategyValidationIssue[] = [];
-  const configuredBySide: Record<'long' | 'short', Set<'entry' | 'exit'>> = {
-    long: new Set(),
-    short: new Set(),
-  };
-
-  (parameters as StrategyParameter[]).forEach((parameter, index) => {
-    if (parameter?.type !== 'rule-builder') return;
-
-    const parameterPath = `${path}.parameters[${index}](${parameter.id})`;
-    const match = RULE_BUILDER_ID_PATTERN.exec(parameter.id ?? '');
-
-    if (!match) {
-      issues.push({
-        path: parameterPath,
-        code: 'INVALID_RULE_BUILDER_ID',
-        message:
-          `Rule-builder parameter id "${String(parameter.id)}" at ${parameterPath} ` +
-          `does not follow the "long|short.entry|exit" convention the trading ` +
-          `engine relies on to map parameters to a side. It will be silently ` +
-          `ignored at execution.`,
-      });
-      return;
-    }
-
-    // `default: null` est un état légitime (paramètre pas encore configuré).
-    if (!parameter.default) return;
-
-    const side = match[1] as 'long' | 'short';
-    const action = match[2] as 'entry' | 'exit';
-    configuredBySide[side].add(action);
-
-    issues.push(...collectRuleTreeIssues(parameter.default, parameterPath));
-  });
-
-  (['long', 'short'] as const).forEach((side) => {
-    const configured = configuredBySide[side];
-    if (configured.has('exit') && !configured.has('entry')) {
-      issues.push(...collectRuleTreeIssues(undefined, `${path}.${side}.entry`));
-    }
-  });
-
-  return issues;
-}
-
 /** Valide une ancre d'ordre : seules les ancres `INDICATOR` sont concernées. */
 export function collectAnchorIssues(
   anchor: IOrderAnchor | undefined,
@@ -374,37 +280,27 @@ export function collectAnchorIssues(
 }
 
 /**
- * Valide les arbres de règles d'entrée/sortie d'une stratégie `advanced-rules`
- * exécutée directement (backtest, requête d'analyse).
+ * Valide les arbres de règles présents, sans exiger qu'il y en ait.
  *
- * `exit` est optionnel par construction (`AdvancedStrategyParameters`) : son
- * absence n'est pas une anomalie, elle n'est donc validée que si présente.
- *
- * En revanche, une stratégie sans `long` ni `short` du tout n'a rien à
- * évaluer : `StrategyEngineService.execute` renverrait silencieusement un
- * tableau de signaux vide. Sur ce chemin d'exécution directe, mieux vaut un
- * rejet explicite qu'une réponse 200 vide qui masque une requête mal formée.
+ * Tolérant par conception : une stratégie codée en dur
+ * (`tol-langit-atr-v7-pro` et consorts) n'a légitimement aucune règle, et une
+ * stratégie en cours de configuration peut n'avoir qu'un seul côté. `exit`
+ * étant optionnel dans `SideRules`, son absence n'est pas non plus une
+ * anomalie. Seul `entry` est obligatoire — et cette contrainte est portée par
+ * le type, donc déjà satisfaite à la compilation pour tout appelant typé ; la
+ * vérification qui suit ne protège que des données non typées venues du
+ * réseau ou de la base.
  */
-export function collectAdvancedParametersIssues(
-  parameters: AdvancedStrategyParameters | undefined | null,
-  path = 'parameters',
+export function collectStrategyRulesIssues(
+  rules: StrategyRules | undefined | null,
+  path = 'rules',
 ): StrategyValidationIssue[] {
-  if (!parameters || (!parameters.long && !parameters.short)) {
-    return [
-      {
-        path,
-        code: 'EMPTY_STRATEGY_PARAMETERS',
-        message:
-          `Strategy at ${path} has neither "long" nor "short" configuration: ` +
-          `there is nothing to evaluate.`,
-      },
-    ];
-  }
+  if (!rules) return [];
 
   const sides = ['long', 'short'] as const;
 
   return sides.flatMap((side) => {
-    const config = parameters[side];
+    const config = rules[side];
     if (!config) return [];
 
     return [
@@ -417,8 +313,42 @@ export function collectAdvancedParametersIssues(
 }
 
 /**
- * Valide l'intégralité d'une stratégie de paire : arbres de règles du
- * rule-builder, ancres et conditions des ordres latents et protecteurs.
+ * Variante stricte pour les chemins d'**exécution directe** (backtest, requête
+ * d'analyse), où les règles sont la raison même de l'appel.
+ *
+ * Une stratégie sans `long` ni `short` n'a rien à évaluer :
+ * `StrategyEngineService.execute` renverrait silencieusement un tableau de
+ * signaux vide. Mieux vaut un rejet explicite qu'une réponse 200 vide qui
+ * masque une requête mal formée.
+ */
+export function collectExecutableStrategyRulesIssues(
+  rules: StrategyRules | undefined | null,
+  path = 'rules',
+): StrategyValidationIssue[] {
+  if (!rules || (!rules.long && !rules.short)) {
+    return [
+      {
+        path,
+        code: 'EMPTY_STRATEGY_RULES',
+        message:
+          `Strategy at ${path} has neither "long" nor "short" rules: ` +
+          `there is nothing to evaluate.`,
+      },
+    ];
+  }
+
+  return collectStrategyRulesIssues(rules, path);
+}
+
+/**
+ * Valide l'intégralité d'une stratégie de paire : arbres de règles, ancres et
+ * conditions des ordres latents et protecteurs.
+ *
+ * `settings` n'est volontairement pas validé. Cette fonction est fail-closed —
+ * une anomalie écarte la paire du trading (voir `rejectAmbiguousPairs` dans
+ * nest-trading-bot) — et aucun consommateur ne lit encore `settings` : rejeter
+ * une stratégie pour un réglage sans effet couperait le trading au nom d'un
+ * champ inerte. À valider le jour où une stratégie l'exploite réellement.
  */
 export function collectStrategyIssues(
   strategy: IExchangeStrategy | undefined | null,
@@ -427,7 +357,7 @@ export function collectStrategyIssues(
   if (!strategy) return [];
 
   const issues: StrategyValidationIssue[] = [
-    ...collectRuleBuilderParametersIssues(strategy.parameters, path),
+    ...collectStrategyRulesIssues(strategy.rules, `${path}.rules`),
   ];
 
   // Ordres latents et protecteurs : ancre de prix + condition de déclenchement.
