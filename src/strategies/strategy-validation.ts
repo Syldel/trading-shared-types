@@ -48,6 +48,7 @@ export type StrategyStructureIssueCode =
   | 'MISSING_OPERAND'
   | 'UNKNOWN_OPERAND_TYPE'
   | 'INVALID_PRICE_FIELD'
+  | 'INVALID_PRICE_OFFSET'
   | 'INVALID_NUMBER_OPERAND'
   | 'UNKNOWN_TREND_DIRECTION'
   | 'INVALID_TREND_PERIOD'
@@ -95,20 +96,41 @@ function collectOperandStructureIssues(
   }
 
   switch (node.type) {
-    case 'price':
+    case 'price': {
+      const issues: StrategyValidationIssue[] = [];
+
       if (!PRICE_FIELDS.includes(node.field as (typeof PRICE_FIELDS)[number])) {
-        return [
-          {
-            path,
-            code: 'INVALID_PRICE_FIELD',
-            allowed: PRICE_FIELDS,
-            message:
-              `Unknown price field "${String(node.field)}" at ${path}. ` +
-              `Allowed: ${PRICE_FIELDS.join(', ')}.`,
-          },
-        ];
+        issues.push({
+          path,
+          code: 'INVALID_PRICE_FIELD',
+          allowed: PRICE_FIELDS,
+          message:
+            `Unknown price field "${String(node.field)}" at ${path}. ` +
+            `Allowed: ${PRICE_FIELDS.join(', ')}.`,
+        });
       }
-      return [];
+
+      // `offset` regarde `offset` bougies en arrière (t-offset). Négatif ou
+      // non entier lirait une bougie future — biais de look-ahead en backtest,
+      // et hors bornes en fin de série côté moteur (voir
+      // StrategyEngineService.resolveOperandValue dans nest-trading-bot).
+      if (
+        node.offset !== undefined &&
+        (typeof node.offset !== 'number' ||
+          !Number.isInteger(node.offset) ||
+          node.offset < 0)
+      ) {
+        issues.push({
+          path,
+          code: 'INVALID_PRICE_OFFSET',
+          message:
+            `Operand at ${path} has an invalid "offset" (received: ${String(node.offset)}). ` +
+            `Must be a non-negative integer when present.`,
+        });
+      }
+
+      return issues;
+    }
 
     case 'number':
       if (typeof node.value !== 'number' || !Number.isFinite(node.value)) {

@@ -182,6 +182,34 @@ describe('collectRuleTreeIssues', () => {
       expect(issues.map((i) => i.code)).toContain('INVALID_PRICE_FIELD');
     });
 
+    it.each([-1, 1.5, 'foo', NaN])(
+      'rejects an invalid price offset (%p)',
+      (offset) => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close', offset },
+            right: { type: 'number', value: 1 },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_PRICE_OFFSET');
+      },
+    );
+
+    it('accepts an explicit zero or positive integer price offset', () => {
+      for (const offset of [0, 1, 20]) {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close', offset },
+          right: { type: 'number', value: 1 },
+        });
+        expect(issues).toEqual([]);
+      }
+    });
+
     it('rejects a non-finite number operand', () => {
       const issues = collectRuleTreeIssues(
         {
