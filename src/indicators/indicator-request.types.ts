@@ -110,3 +110,32 @@ export type IndicatorOperand =
  * (ex: pour des validations ou des itérations)
  */
 export type IndicatorName = IndicatorRequest['name'];
+
+/**
+ * Constante runtime miroir de `IndicatorName`, dans le même esprit que
+ * `PRICE_FIELDS`/`COMPARISON_OPERATORS` (strategy-engine.type.ts) : sert de
+ * source à `isIndicatorName` sans dépendre de `INDICATOR_REGISTRY`
+ * (indicator-registry.ts), qui a lui-même besoin de `indicator-subfields.ts`
+ * — dépendre de `INDICATOR_REGISTRY` ici créerait un cycle. Ce fichier reste
+ * une feuille sans dépendance vers le reste du dossier `indicators/`.
+ */
+export const INDICATOR_NAMES = [
+  'ema',
+  'sma',
+  'hma',
+  'rsi',
+  'atr',
+  'sd',
+  'chop',
+  'adx',
+  'obv',
+  'macd',
+  'ichimoku',
+  'bb',
+  'bbw',
+  'bbp',
+  'supertrend',
+  'keltner',
+  'stochrsi',
+  'pivotpoints',
+] as const satisfies readonly IndicatorName[];

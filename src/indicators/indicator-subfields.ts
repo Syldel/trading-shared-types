@@ -1,4 +1,4 @@
-import { INDICATOR_DEFAULTS } from './indicator-defaults.js';
+import { INDICATOR_NAMES } from './indicator-request.types.js';
 import type { IndicatorName } from './indicator-request.types.js';
 
 /**
@@ -90,7 +90,10 @@ export type MultiLineIndicatorName = keyof typeof INDICATOR_SUBFIELDS;
 
 /** Vérifie qu'un nom correspond à un indicateur connu du registre. */
 export function isIndicatorName(name: unknown): name is IndicatorName {
-  return typeof name === 'string' && name in INDICATOR_DEFAULTS;
+  return (
+    typeof name === 'string' &&
+    (INDICATOR_NAMES as readonly string[]).includes(name)
+  );
 }
 
 /** Vérifie qu'un indicateur produit plusieurs lignes. */
@@ -179,7 +182,7 @@ export function validateIndicatorOperand(
       indicator: name,
       message:
         `Unknown indicator "${String(name)}". ` +
-        `Known indicators: ${Object.keys(INDICATOR_DEFAULTS).join(', ')}.`,
+        `Known indicators: ${INDICATOR_NAMES.join(', ')}.`,
     };
   }
 
