@@ -208,6 +208,59 @@ describe('walkRuleTree', () => {
     expect(operands.some((o) => o.type === 'arith')).toBe(false);
   });
 
+  // À la différence d'`arith`, `transform` est transmis tel quel à
+  // `onOperand` : c'est au consommateur qui sait calculer une transformation
+  // (le moteur de stratégie) de résoudre récursivement `source`, pas à ce
+  // walker. Un consommateur qui ignore `transform` (ex: l'extraction
+  // d'ancres d'ordre) n'a donc pas à connaître cette récursion interne.
+  it('treats a "transform" operand as a leaf, passed whole to onOperand without descending into its nested "source"', () => {
+    const tree: RuleNode = {
+      type: 'comparison',
+      operator: 'LT',
+      left: {
+        type: 'transform',
+        kind: 'percentile',
+        period: 200,
+        source: { type: 'indicator', name: 'bbw', period: 20 },
+      },
+      right: { type: 'number', value: 20 },
+    };
+
+    const operands: { type: string; key: string }[] = [];
+    walkRuleTree(tree, {
+      onOperand: (operand, ctx) => operands.push({ type: operand.type, key: ctx.key }),
+    });
+
+    expect(operands).toEqual([
+      { type: 'transform', key: 'left' },
+      { type: 'number', key: 'right' },
+    ]);
+  });
+
+  it('descends into "arith" down to a nested "transform" leaf without unwrapping it', () => {
+    const tree: RuleNode = {
+      type: 'comparison',
+      operator: 'GT',
+      left: {
+        type: 'arith',
+        operator: 'ADD',
+        left: {
+          type: 'transform',
+          kind: 'zscore',
+          period: 200,
+          source: { type: 'indicator', name: 'adx', period: 14, subField: 'adx' },
+        },
+        right: { type: 'number', value: 1 },
+      },
+      right: { type: 'number', value: 0 },
+    };
+
+    const operands: string[] = [];
+    walkRuleTree(tree, { onOperand: (operand) => operands.push(operand.type) });
+
+    expect(operands).toEqual(['transform', 'number', 'number']);
+  });
+
   it('reports UNKNOWN_OPERAND_TYPE for a missing operand inside a comparison', () => {
     const onMalformed = jest.fn();
 

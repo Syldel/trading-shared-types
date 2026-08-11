@@ -13,5 +13,6 @@ export * from './strategies/strategy-engine.type.js';
 export * from './strategies/strategy-tree-walk.js';
 export * from './strategies/strategy-validation.js';
 export * from './strategies/strategy.types.js';
+export * from './strategies/transform-registry.js';
 export * from './chart.type.js';
 export * from './external-user.interface.js';

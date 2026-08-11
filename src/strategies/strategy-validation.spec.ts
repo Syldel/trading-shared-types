@@ -498,6 +498,142 @@ describe('collectRuleTreeIssues', () => {
       });
     });
 
+    describe('"transform" operand', () => {
+      it('rejects an unknown transform kind', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'LT',
+            left: {
+              type: 'transform',
+              kind: 'bogus',
+              period: 200,
+              source: { type: 'indicator', name: 'bbw', period: 20 },
+            },
+            right: { type: 'number', value: 20 },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_TRANSFORM_KIND');
+      });
+
+      it.each([0, 1, -5, 1.5, NaN, 'ten', null])(
+        'rejects an invalid period when provided (%p)',
+        (period) => {
+          const issues = collectRuleTreeIssues(
+            {
+              type: 'comparison',
+              operator: 'LT',
+              left: {
+                type: 'transform',
+                kind: 'zscore',
+                period,
+                source: { type: 'indicator', name: 'bbw', period: 20 },
+              },
+              right: { type: 'number', value: -1 },
+            },
+            'entry',
+          );
+          expect(issues.map((i) => i.code)).toContain('INVALID_TRANSFORM_PERIOD');
+        },
+      );
+
+      it('accepts an omitted period (resolved later from TRANSFORM_REGISTRY)', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'LT',
+          left: {
+            type: 'transform',
+            kind: 'percentile',
+            source: { type: 'indicator', name: 'bbw', period: 20 },
+          },
+          right: { type: 'number', value: 20 },
+        });
+        expect(issues).toEqual([]);
+      });
+
+      it('rejects an invalid offset', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'LT',
+            left: {
+              type: 'transform',
+              kind: 'zscore',
+              period: 200,
+              offset: -1,
+              source: { type: 'indicator', name: 'bbw', period: 20 },
+            },
+            right: { type: 'number', value: -1 },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
+      });
+
+      it('recurses into "source", reporting the nested path', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'LT',
+            left: {
+              type: 'transform',
+              kind: 'zscore',
+              period: 200,
+              source: { type: 'indicator', name: 'adx' }, // missing subField
+            },
+            right: { type: 'number', value: -1 },
+          },
+          'entry',
+        );
+        expect(issues).toHaveLength(1);
+        expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+        expect(issues[0]!.path).toBe('entry.left.source');
+      });
+
+      it('accepts a well-formed transform composed on another transform (e.g. ZScore of a Slope)', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'LT',
+          left: {
+            type: 'transform',
+            kind: 'zscore',
+            period: 200,
+            source: {
+              type: 'transform',
+              kind: 'slope',
+              period: 20,
+              source: { type: 'indicator', name: 'ema', period: 50 },
+            },
+          },
+          right: { type: 'number', value: -1 },
+        });
+        expect(issues).toEqual([]);
+      });
+
+      // Protège le chemin bougie d'un arbre pathologique : voir MAX_OPERAND_DEPTH.
+      it('rejects transform expressions nested beyond the maximum depth', () => {
+        let deeplyNested: unknown = { type: 'indicator', name: 'sma', period: 20 };
+        for (let i = 0; i < 10; i++) {
+          deeplyNested = {
+            type: 'transform',
+            kind: 'zscore',
+            period: 200,
+            source: deeplyNested,
+          };
+        }
+
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'LT',
+          left: deeplyNested,
+          right: { type: 'number', value: -1 },
+        });
+
+        expect(issues.map((i) => i.code)).toContain('TRANSFORM_TOO_DEEP');
+      });
+    });
+
     it('does not flag an absent optional field as a missing node', () => {
       // `exit` est une absence légitime (optionnel dans `SideRules`) : c'est
       // aux call sites de ne pas appeler `collectRuleTreeIssues` dessus, pas à

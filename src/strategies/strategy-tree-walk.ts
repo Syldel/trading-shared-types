@@ -33,9 +33,18 @@ export interface RuleTreeVisitor {
    * Appelé pour chaque opérande *feuille* atteignable (`comparison.left`/`.right`,
    * `trend.target`, `cross.left`/`.right`). Un opérande `arith` n'est jamais
    * transmis lui-même : le walker descend dans `.left`/`.right` jusqu'aux
-   * feuilles (`price`/`indicator`/`number`) — sans quoi un indicateur niché
-   * dans une expression arithmétique ne serait jamais calculé. `key` désigne
-   * l'emplacement sur le nœud parent, pas la position dans l'arbre `arith`.
+   * feuilles (`price`/`indicator`/`number`/`transform`) — sans quoi un
+   * indicateur niché dans une expression arithmétique ne serait jamais
+   * calculé. `key` désigne l'emplacement sur le nœud parent, pas la position
+   * dans l'arbre `arith`.
+   *
+   * `transform` est transmis tel quel (comme `indicator`), jamais décomposé :
+   * bien qu'il porte lui-même un `source: Operand` imbriqué, résoudre cette
+   * source récursivement est la responsabilité du consommateur qui sait
+   * calculer une transformation (le moteur de stratégie), pas de ce walker.
+   * Un consommateur qui ignore `transform` (ex: l'extraction d'ancres
+   * d'ordre, qui ne s'intéresse qu'à `indicator`) n'a donc pas à connaître
+   * cette récursion interne.
    */
   onOperand?: (
     operand: Operand,

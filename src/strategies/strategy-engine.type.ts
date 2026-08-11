@@ -12,19 +12,38 @@ export const ARITH_OPERATORS = ['ADD', 'SUB', 'MUL', 'DIV'] as const;
 export type ArithOperator = typeof ARITH_OPERATORS[number];
 
 /**
+ * Transformations glissantes applicables à la série produite par n'importe
+ * quel `Operand` (voir le nœud `transform` ci-dessous). Métadonnées
+ * (libellé, échelle de sortie, période par défaut) dans `TRANSFORM_REGISTRY`
+ * (transform-registry.ts) — ce fichier ne porte que l'énumération, dans le
+ * même esprit que `ARITH_OPERATORS` ci-dessus.
+ */
+export const TRANSFORM_KINDS = ['zscore', 'percentile', 'ratioToMa', 'slope'] as const;
+export type TransformKind = typeof TRANSFORM_KINDS[number];
+
+/**
  * `arith` combine récursivement deux opérandes (ex: `ema20 + atr14 * 2`,
  * représenté par l'imbrication des nœuds, pas par une chaîne à parser).
  *
+ * `transform` applique une transformation glissante (`TransformKind`) à la
+ * série produite par `source` — lui-même un `Operand` quelconque, ce qui
+ * permet la composition (ex: le ZScore de la pente d'une EMA : un `transform`
+ * `zscore` dont la `source` est un `transform` `slope` dont la `source` est
+ * l'EMA). `period` omise se résout via `TRANSFORM_REGISTRY`, comme `period`
+ * sur un `IndicatorOperand` se résout via `INDICATOR_DEFAULTS` — jamais de
+ * valeur par défaut dupliquée ici.
+ *
  * `offset` ne s'applique qu'aux opérandes qui désignent une position dans le
- * temps (`price`, `indicator`) : une constante n'a pas de dimension
- * temporelle, et un `arith` n'offsette pas le résultat en bloc — chaque
- * feuille porte son propre offset si besoin.
+ * temps (`price`, `indicator`, `transform`) : une constante n'a pas de
+ * dimension temporelle, et un `arith` n'offsette pas le résultat en bloc —
+ * chaque feuille porte son propre offset si besoin.
  */
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }
   | ({ type: 'indicator'; offset?: number } & IndicatorOperand)
   | { type: 'number'; value: number }
-  | { type: 'arith'; operator: ArithOperator; left: Operand; right: Operand };
+  | { type: 'arith'; operator: ArithOperator; left: Operand; right: Operand }
+  | { type: 'transform'; kind: TransformKind; period?: number; source: Operand; offset?: number };
 
 export const COMPARISON_OPERATORS = ['GT', 'GTE', 'LT', 'LTE', 'EQ'] as const;
 export type ComparisonOperator = typeof COMPARISON_OPERATORS[number];

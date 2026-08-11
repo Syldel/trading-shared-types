@@ -13,6 +13,7 @@ import {
   CROSS_DIRECTIONS,
   LOGICAL_OPERATORS,
   PRICE_FIELDS,
+  TRANSFORM_KINDS,
   TREND_DIRECTIONS,
   TREND_MODES,
   type StrategyRules,
@@ -58,6 +59,9 @@ export type StrategyStructureIssueCode =
   | 'UNKNOWN_TREND_MODE'
   | 'UNKNOWN_ARITH_OPERATOR'
   | 'ARITH_TOO_DEEP'
+  | 'INVALID_TRANSFORM_KIND'
+  | 'INVALID_TRANSFORM_PERIOD'
+  | 'TRANSFORM_TOO_DEEP'
   | 'UNKNOWN_CROSS_DIRECTION'
   | 'INVALID_CONSTANT_VALUE'
   | 'EMPTY_STRATEGY_RULES';
@@ -112,15 +116,19 @@ function collectOffsetIssue(
   return null;
 }
 
-/** Un `arith` imbriqué au-delà de cette profondeur est rejeté plutôt que
- * parcouru : protège le chemin bougie (évaluation par candle) d'un arbre
- * pathologique, accidentel ou non. */
-const MAX_ARITH_DEPTH = 6;
+/** Un `arith` ou un `transform` imbriqué au-delà de cette profondeur est
+ * rejeté plutôt que parcouru : protège le chemin bougie (évaluation par
+ * candle) d'un arbre pathologique, accidentel ou non. Constante interne
+ * (non exportée) : les deux nœuds partagent la même limite mais chacun son
+ * propre code d'anomalie (`ARITH_TOO_DEEP` / `TRANSFORM_TOO_DEEP`), pour que
+ * le diagnostic reste précis. */
+const MAX_OPERAND_DEPTH = 6;
 
 /**
- * Valide la forme d'un opérande (`price` | `indicator` | `number` | `arith`),
- * quel que soit l'emplacement d'où il est référencé (`comparison.left/right`,
- * `trend.target`, `cross.left/right`, ou récursivement un côté d'`arith`).
+ * Valide la forme d'un opérande (`price` | `indicator` | `number` | `arith` |
+ * `transform`), quel que soit l'emplacement d'où il est référencé
+ * (`comparison.left/right`, `trend.target`, `cross.left/right`, ou
+ * récursivement un côté d'`arith` ou la `source` d'un `transform`).
  */
 function collectOperandStructureIssues(
   operand: unknown,
@@ -202,13 +210,13 @@ function collectOperandStructureIssues(
         });
       }
 
-      if (depth >= MAX_ARITH_DEPTH) {
+      if (depth >= MAX_OPERAND_DEPTH) {
         issues.push({
           path,
           code: 'ARITH_TOO_DEEP',
           message:
             `Arithmetic expression at ${path} exceeds the maximum nesting ` +
-            `depth (${MAX_ARITH_DEPTH}).`,
+            `depth (${MAX_OPERAND_DEPTH}).`,
         });
         return issues;
       }
@@ -220,6 +228,62 @@ function collectOperandStructureIssues(
       ];
     }
 
+    case 'transform': {
+      const issues: StrategyValidationIssue[] = [];
+
+      if (
+        !TRANSFORM_KINDS.includes(node.kind as (typeof TRANSFORM_KINDS)[number])
+      ) {
+        issues.push({
+          path,
+          code: 'INVALID_TRANSFORM_KIND',
+          allowed: TRANSFORM_KINDS,
+          message:
+            `Unknown transform kind "${String(node.kind)}" at ${path}. ` +
+            `Allowed: ${TRANSFORM_KINDS.join(', ')}.`,
+        });
+      }
+
+      // `period` est optionnel (résolu via TRANSFORM_REGISTRY si omis, voir
+      // strategy-engine.type.ts) : seule une valeur *fournie* est validée
+      // ici. Plancher à 2, pas 1 : une fenêtre d'un seul point ne définit ni
+      // variance (zscore) ni régression (slope) — ce n'est pas un jugement
+      // de pertinence, la sortie serait mathématiquement indéterminée.
+      if (
+        node.period !== undefined &&
+        (typeof node.period !== 'number' ||
+          !Number.isInteger(node.period) ||
+          node.period < 2)
+      ) {
+        issues.push({
+          path,
+          code: 'INVALID_TRANSFORM_PERIOD',
+          message:
+            `Transform period at ${path} must be an integer >= 2 when ` +
+            `present (received: ${String(node.period)}).`,
+        });
+      }
+
+      const offsetIssue = collectOffsetIssue(node.offset, path);
+      if (offsetIssue) issues.push(offsetIssue);
+
+      if (depth >= MAX_OPERAND_DEPTH) {
+        issues.push({
+          path,
+          code: 'TRANSFORM_TOO_DEEP',
+          message:
+            `Transform expression at ${path} exceeds the maximum nesting ` +
+            `depth (${MAX_OPERAND_DEPTH}).`,
+        });
+        return issues;
+      }
+
+      return [
+        ...issues,
+        ...collectOperandStructureIssues(node.source, `${path}.source`, depth + 1),
+      ];
+    }
+
     default:
       return [
         {
@@ -227,7 +291,7 @@ function collectOperandStructureIssues(
           code: 'UNKNOWN_OPERAND_TYPE',
           message:
             `Unknown operand type "${String(node.type)}" at ${path}. ` +
-            `Allowed: price, indicator, number, arith.`,
+            `Allowed: price, indicator, number, arith, transform.`,
         },
       ];
   }
