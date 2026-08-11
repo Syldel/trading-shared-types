@@ -7,6 +7,7 @@ import {
   validateIndicatorOperand,
   type IndicatorOperandIssueCode,
 } from '../indicators/indicator-subfields.js';
+import { buildOperandKey } from './operand-key.js';
 import {
   ARITH_OPERATORS,
   COMPARISON_OPERATORS,
@@ -16,6 +17,7 @@ import {
   TRANSFORM_KINDS,
   TREND_DIRECTIONS,
   TREND_MODES,
+  type Operand,
   type StrategyRules,
 } from './strategy-engine.type.js';
 
@@ -64,7 +66,9 @@ export type StrategyStructureIssueCode =
   | 'TRANSFORM_TOO_DEEP'
   | 'UNKNOWN_CROSS_DIRECTION'
   | 'INVALID_CONSTANT_VALUE'
-  | 'EMPTY_STRATEGY_RULES';
+  | 'EMPTY_STRATEGY_RULES'
+  | 'INVALID_EXPRESSION_ID'
+  | 'DUPLICATE_EXPRESSION_KEY';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -127,10 +131,16 @@ const MAX_OPERAND_DEPTH = 6;
 /**
  * Valide la forme d'un opérande (`price` | `indicator` | `number` | `arith` |
  * `transform`), quel que soit l'emplacement d'où il est référencé
- * (`comparison.left/right`, `trend.target`, `cross.left/right`, ou
- * récursivement un côté d'`arith` ou la `source` d'un `transform`).
+ * (`comparison.left/right`, `trend.target`, `cross.left/right`, une
+ * expression de chart — voir `collectExpressionIssues` — ou récursivement un
+ * côté d'`arith` ou la `source` d'un `transform`).
+ *
+ * Exportée (au-delà de son usage interne par `collectRuleTreeIssues`) car
+ * `collectExpressionIssues` valide un `Operand` isolé, hors de tout arbre de
+ * règles : la même fonction sert les deux besoins plutôt que d'en dupliquer
+ * une variante.
  */
-function collectOperandStructureIssues(
+export function collectOperandStructureIssues(
   operand: unknown,
   path: string,
   depth = 0,
@@ -553,6 +563,83 @@ export function collectExecutableStrategyRulesIssues(
   }
 
   return collectStrategyRulesIssues(rules, path);
+}
+
+/** Forme minimale acceptée en entrée : les données viennent de JSON, donc non typées. */
+interface RawExpression {
+  id?: unknown;
+  operand?: unknown;
+}
+
+/**
+ * Valide la liste `expressions` d'une requête d'analyse (Chart UI — voir
+ * `ExpressionRequest` dans `trading-shared-types`) : cohérence référentielle
+ * de chaque `operand` (réutilise `collectOperandStructureIssues`, la même
+ * validation qu'un opérande de règle) et unicité de la clé de réponse
+ * (`id` explicite, sinon `buildOperandKey(operand)`).
+ *
+ * Une expression dont l'opérande est déjà invalide n'entre pas dans le calcul
+ * des clés dupliquées : `buildOperandKey` suppose un `Operand` structurellement
+ * valide, l'appeler sur une donnée déjà rejetée ne produirait rien d'utile.
+ */
+export function collectExpressionIssues(
+  expressions: readonly RawExpression[] | undefined | null,
+  path = 'expressions',
+): StrategyValidationIssue[] {
+  if (!expressions || expressions.length === 0) return [];
+
+  const issues: StrategyValidationIssue[] = [];
+  const indicesByKey = new Map<string, number[]>();
+
+  expressions.forEach((expr, index) => {
+    const itemPath = `${path}[${index}]`;
+    const hasId = expr?.id !== undefined;
+
+    if (hasId && (typeof expr.id !== 'string' || expr.id.length === 0)) {
+      issues.push({
+        path: `${itemPath}.id`,
+        code: 'INVALID_EXPRESSION_ID',
+        message:
+          `Expression id at ${itemPath}.id must be a non-empty string when ` +
+          `present (received: ${String(expr?.id)}). Omit it entirely to ` +
+          `derive the response key from the operand instead.`,
+      });
+      return;
+    }
+
+    const operandIssues = collectOperandStructureIssues(
+      expr?.operand,
+      `${itemPath}.operand`,
+    );
+    if (operandIssues.length > 0) {
+      issues.push(...operandIssues);
+      return;
+    }
+
+    const key = hasId
+      ? (expr.id as string)
+      : buildOperandKey(expr!.operand as Operand);
+    const indices = indicesByKey.get(key) ?? [];
+    indices.push(index);
+    indicesByKey.set(key, indices);
+  });
+
+  for (const [key, indices] of indicesByKey) {
+    if (indices.length <= 1) continue;
+    for (const index of indices) {
+      const others = indices.filter((i) => i !== index).join(', ');
+      issues.push({
+        path: `${path}[${index}]`,
+        code: 'DUPLICATE_EXPRESSION_KEY',
+        message:
+          `Expression at ${path}[${index}] resolves to response key "${key}", ` +
+          `also produced by expression(s) at index ${others}. Give each a ` +
+          `distinct explicit "id", or ensure their operands differ.`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 /**

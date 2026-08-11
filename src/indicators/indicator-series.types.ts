@@ -10,7 +10,17 @@ export interface TimePoint {
 // ============================================================================
 
 export interface SimpleValue {
-  value: number;
+  /**
+   * `null` quand l'opérande n'est pas calculable à ce point (amorçage
+   * insuffisant, fenêtre de transformation dégénérée) — jamais comblé par
+   * une valeur de repli. Les indicateurs mono-ligne ne produisent
+   * aujourd'hui jamais `null` (leur période d'amorçage est simplement omise
+   * de la série, pas remplie), mais une expression composée (voir
+   * `ExpressionRequest`) le peut : une transformation glissante peut
+   * redevenir indéterminée au milieu d'une série déjà bien amorcée (ex:
+   * écart-type nul sur une fenêtre plate), pas seulement à son tout début.
+   */
+  value: number | null;
 }
 
 export interface MacdValue {

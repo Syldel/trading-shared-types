@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 import type { IExchangePair } from '../exchange/exchange-config.interface.js';
 import {
   collectExecutableStrategyRulesIssues,
+  collectExpressionIssues,
   collectPairIssues,
   collectRuleTreeIssues,
   collectStrategyRulesIssues,
@@ -915,5 +916,125 @@ describe('toStrategyValidationResult', () => {
         },
       ],
     });
+  });
+});
+
+describe('collectExpressionIssues', () => {
+  it('returns nothing for an absent or empty list', () => {
+    expect(collectExpressionIssues(undefined)).toEqual([]);
+    expect(collectExpressionIssues(null)).toEqual([]);
+    expect(collectExpressionIssues([])).toEqual([]);
+  });
+
+  it('accepts a well-formed expression without an id', () => {
+    const issues = collectExpressionIssues([
+      { operand: { type: 'indicator', name: 'ema', period: 9 } },
+    ]);
+    expect(issues).toEqual([]);
+  });
+
+  it('accepts a well-formed expression with an explicit id', () => {
+    const issues = collectExpressionIssues([
+      {
+        id: 'myTrendZone',
+        operand: {
+          type: 'transform',
+          kind: 'percentile',
+          period: 200,
+          source: { type: 'indicator', name: 'bbw', period: 20 },
+        },
+      },
+    ]);
+    expect(issues).toEqual([]);
+  });
+
+  it.each([1, '', true, {}])(
+    'rejects a non-empty-string id (%p)',
+    (id) => {
+      const issues = collectExpressionIssues([
+        { id, operand: { type: 'indicator', name: 'ema', period: 9 } },
+      ]);
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('INVALID_EXPRESSION_ID');
+      expect(issues[0]!.path).toBe('expressions[0].id');
+    },
+  );
+
+  it('reports a structurally invalid operand at the nested "operand" path', () => {
+    const issues = collectExpressionIssues([
+      { operand: { type: 'indicator', name: 'adx', period: 14 } }, // missing subField
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+    expect(issues[0]!.path).toBe('expressions[0].operand');
+  });
+
+  it('does not compute a duplicate-key check for an expression whose operand is already invalid', () => {
+    // Un deuxième opérande identique et VALIDE ne doit pas être signalé comme
+    // doublon d'un premier opérande invalide : ce dernier n'a jamais atteint
+    // le calcul de clé.
+    const issues = collectExpressionIssues([
+      { operand: { type: 'indicator', name: 'adx', period: 14 } }, // invalide (subField manquant)
+      { operand: { type: 'indicator', name: 'ema', period: 9 } }, // valide, unique
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+  });
+
+  it('flags two expressions sharing the same explicit id', () => {
+    const issues = collectExpressionIssues([
+      { id: 'dup', operand: { type: 'indicator', name: 'ema', period: 9 } },
+      { id: 'dup', operand: { type: 'indicator', name: 'sma', period: 20 } },
+    ]);
+
+    expect(issues).toHaveLength(2);
+    expect(issues.map((i) => i.code)).toEqual([
+      'DUPLICATE_EXPRESSION_KEY',
+      'DUPLICATE_EXPRESSION_KEY',
+    ]);
+    expect(issues.map((i) => i.path)).toEqual([
+      'expressions[0]',
+      'expressions[1]',
+    ]);
+  });
+
+  it('flags two expressions whose operands resolve to the same computed key (no id on either)', () => {
+    const issues = collectExpressionIssues([
+      { operand: { type: 'indicator', name: 'ema', period: 9 } },
+      { operand: { type: 'indicator', name: 'ema', period: 9 } },
+    ]);
+
+    expect(issues.map((i) => i.code)).toEqual([
+      'DUPLICATE_EXPRESSION_KEY',
+      'DUPLICATE_EXPRESSION_KEY',
+    ]);
+  });
+
+  it('flags an explicit id colliding with another expression\'s computed key', () => {
+    const issues = collectExpressionIssues([
+      { id: 'ema_9', operand: { type: 'indicator', name: 'sma', period: 20 } },
+      { operand: { type: 'indicator', name: 'ema', period: 9 } },
+    ]);
+
+    expect(issues.map((i) => i.code)).toEqual([
+      'DUPLICATE_EXPRESSION_KEY',
+      'DUPLICATE_EXPRESSION_KEY',
+    ]);
+  });
+
+  it('does not flag distinct expressions (different ids, different operands)', () => {
+    const issues = collectExpressionIssues([
+      { id: 'a', operand: { type: 'indicator', name: 'ema', period: 9 } },
+      { operand: { type: 'indicator', name: 'ema', period: 20 } },
+      {
+        operand: {
+          type: 'transform',
+          kind: 'zscore',
+          period: 200,
+          source: { type: 'indicator', name: 'atr', period: 14 },
+        },
+      },
+    ]);
+    expect(issues).toEqual([]);
   });
 });
