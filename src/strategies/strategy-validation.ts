@@ -8,10 +8,13 @@ import {
   type IndicatorOperandIssueCode,
 } from '../indicators/indicator-subfields.js';
 import {
+  ARITH_OPERATORS,
   COMPARISON_OPERATORS,
+  CROSS_DIRECTIONS,
   LOGICAL_OPERATORS,
   PRICE_FIELDS,
   TREND_DIRECTIONS,
+  TREND_MODES,
   type StrategyRules,
 } from './strategy-engine.type.js';
 
@@ -48,10 +51,15 @@ export type StrategyStructureIssueCode =
   | 'MISSING_OPERAND'
   | 'UNKNOWN_OPERAND_TYPE'
   | 'INVALID_PRICE_FIELD'
-  | 'INVALID_PRICE_OFFSET'
+  | 'INVALID_OFFSET'
   | 'INVALID_NUMBER_OPERAND'
   | 'UNKNOWN_TREND_DIRECTION'
   | 'INVALID_TREND_PERIOD'
+  | 'UNKNOWN_TREND_MODE'
+  | 'UNKNOWN_ARITH_OPERATOR'
+  | 'ARITH_TOO_DEEP'
+  | 'UNKNOWN_CROSS_DIRECTION'
+  | 'INVALID_CONSTANT_VALUE'
   | 'EMPTY_STRATEGY_RULES';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
@@ -76,13 +84,48 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /**
- * Valide la forme d'un opérande (`price` | `indicator` | `number`), quel que
- * soit l'emplacement d'où il est référencé (`comparison.left/right` ou
- * `trend.target`).
+ * `offset` regarde `offset` bougies en arrière (t-offset), sur `price` comme
+ * sur `indicator`. Négatif ou non entier lirait une bougie future — biais de
+ * look-ahead en backtest, et hors bornes en fin de série côté moteur (voir
+ * StrategyEngineService.resolveOperandValue dans nest-trading-bot).
+ */
+function collectOffsetIssue(
+  offset: unknown,
+  path: string,
+): StrategyValidationIssue | null {
+  if (offset === undefined) return null;
+
+  if (
+    typeof offset !== 'number' ||
+    !Number.isInteger(offset) ||
+    offset < 0
+  ) {
+    return {
+      path,
+      code: 'INVALID_OFFSET',
+      message:
+        `Operand at ${path} has an invalid "offset" (received: ${String(offset)}). ` +
+        `Must be a non-negative integer when present.`,
+    };
+  }
+
+  return null;
+}
+
+/** Un `arith` imbriqué au-delà de cette profondeur est rejeté plutôt que
+ * parcouru : protège le chemin bougie (évaluation par candle) d'un arbre
+ * pathologique, accidentel ou non. */
+const MAX_ARITH_DEPTH = 6;
+
+/**
+ * Valide la forme d'un opérande (`price` | `indicator` | `number` | `arith`),
+ * quel que soit l'emplacement d'où il est référencé (`comparison.left/right`,
+ * `trend.target`, `cross.left/right`, ou récursivement un côté d'`arith`).
  */
 function collectOperandStructureIssues(
   operand: unknown,
   path: string,
+  depth = 0,
 ): StrategyValidationIssue[] {
   const node = asRecord(operand);
   if (!node) {
@@ -110,24 +153,8 @@ function collectOperandStructureIssues(
         });
       }
 
-      // `offset` regarde `offset` bougies en arrière (t-offset). Négatif ou
-      // non entier lirait une bougie future — biais de look-ahead en backtest,
-      // et hors bornes en fin de série côté moteur (voir
-      // StrategyEngineService.resolveOperandValue dans nest-trading-bot).
-      if (
-        node.offset !== undefined &&
-        (typeof node.offset !== 'number' ||
-          !Number.isInteger(node.offset) ||
-          node.offset < 0)
-      ) {
-        issues.push({
-          path,
-          code: 'INVALID_PRICE_OFFSET',
-          message:
-            `Operand at ${path} has an invalid "offset" (received: ${String(node.offset)}). ` +
-            `Must be a non-negative integer when present.`,
-        });
-      }
+      const offsetIssue = collectOffsetIssue(node.offset, path);
+      if (offsetIssue) issues.push(offsetIssue);
 
       return issues;
     }
@@ -147,8 +174,50 @@ function collectOperandStructureIssues(
       return [];
 
     case 'indicator': {
+      const issues: StrategyValidationIssue[] = [];
       const issue = validateIndicatorOperand(node);
-      return issue ? [{ ...issue, path }] : [];
+      if (issue) issues.push({ ...issue, path });
+
+      const offsetIssue = collectOffsetIssue(node.offset, path);
+      if (offsetIssue) issues.push(offsetIssue);
+
+      return issues;
+    }
+
+    case 'arith': {
+      const issues: StrategyValidationIssue[] = [];
+
+      if (
+        !ARITH_OPERATORS.includes(
+          node.operator as (typeof ARITH_OPERATORS)[number],
+        )
+      ) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_ARITH_OPERATOR',
+          allowed: ARITH_OPERATORS,
+          message:
+            `Unknown arithmetic operator "${String(node.operator)}" at ${path}. ` +
+            `Allowed: ${ARITH_OPERATORS.join(', ')}.`,
+        });
+      }
+
+      if (depth >= MAX_ARITH_DEPTH) {
+        issues.push({
+          path,
+          code: 'ARITH_TOO_DEEP',
+          message:
+            `Arithmetic expression at ${path} exceeds the maximum nesting ` +
+            `depth (${MAX_ARITH_DEPTH}).`,
+        });
+        return issues;
+      }
+
+      return [
+        ...issues,
+        ...collectOperandStructureIssues(node.left, `${path}.left`, depth + 1),
+        ...collectOperandStructureIssues(node.right, `${path}.right`, depth + 1),
+      ];
     }
 
     default:
@@ -158,7 +227,7 @@ function collectOperandStructureIssues(
           code: 'UNKNOWN_OPERAND_TYPE',
           message:
             `Unknown operand type "${String(node.type)}" at ${path}. ` +
-            `Allowed: price, indicator, number.`,
+            `Allowed: price, indicator, number, arith.`,
         },
       ];
   }
@@ -267,10 +336,70 @@ export function collectRuleTreeIssues(
         });
       }
 
+      if (
+        current.mode !== undefined &&
+        !TREND_MODES.includes(current.mode as (typeof TREND_MODES)[number])
+      ) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_TREND_MODE',
+          allowed: TREND_MODES,
+          message:
+            `Unknown trend mode "${String(current.mode)}" at ${path}. ` +
+            `Allowed: ${TREND_MODES.join(', ')}.`,
+        });
+      }
+
       return [
         ...issues,
         ...collectOperandStructureIssues(current.target, `${path}.target`),
       ];
+    }
+
+    case 'not': {
+      // Rien à valider sur le nœud lui-même : `not` n'a ni opérateur ni
+      // opérande, seulement le sous-arbre qu'il inverse.
+      return collectRuleTreeIssues(current.condition, `${path}.condition`);
+    }
+
+    case 'cross': {
+      const issues: StrategyValidationIssue[] = [];
+
+      if (
+        !CROSS_DIRECTIONS.includes(
+          current.direction as (typeof CROSS_DIRECTIONS)[number],
+        )
+      ) {
+        issues.push({
+          path,
+          code: 'UNKNOWN_CROSS_DIRECTION',
+          allowed: CROSS_DIRECTIONS,
+          message:
+            `Unknown cross direction "${String(current.direction)}" at ${path}. ` +
+            `Allowed: ${CROSS_DIRECTIONS.join(', ')}.`,
+        });
+      }
+
+      return [
+        ...issues,
+        ...collectOperandStructureIssues(current.left, `${path}.left`),
+        ...collectOperandStructureIssues(current.right, `${path}.right`),
+      ];
+    }
+
+    case 'constant': {
+      if (typeof current.value !== 'boolean') {
+        return [
+          {
+            path,
+            code: 'INVALID_CONSTANT_VALUE',
+            message:
+              `Constant condition at ${path} must have a boolean "value" ` +
+              `(received: ${String(current.value)}).`,
+          },
+        ];
+      }
+      return [];
     }
 
     default:
@@ -280,7 +409,7 @@ export function collectRuleTreeIssues(
           code: 'UNKNOWN_NODE_TYPE',
           message:
             `Unknown rule node type "${String(current.type)}" at ${path}. ` +
-            `Allowed: logical, comparison, trend.`,
+            `Allowed: logical, comparison, trend, not, cross, constant.`,
         },
       ];
   }

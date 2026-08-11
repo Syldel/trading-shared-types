@@ -194,7 +194,7 @@ describe('collectRuleTreeIssues', () => {
           },
           'entry',
         );
-        expect(issues.map((i) => i.code)).toContain('INVALID_PRICE_OFFSET');
+        expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
       },
     );
 
@@ -208,6 +208,32 @@ describe('collectRuleTreeIssues', () => {
         });
         expect(issues).toEqual([]);
       }
+    });
+
+    it.each([-1, 1.5, 'foo'])(
+      'rejects an invalid indicator offset (%p)',
+      (offset) => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'indicator', name: 'ema', period: 9, offset },
+            right: { type: 'number', value: 1 },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
+      },
+    );
+
+    it('accepts an explicit zero or positive integer indicator offset', () => {
+      const issues = collectRuleTreeIssues({
+        type: 'comparison',
+        operator: 'GT',
+        left: { type: 'indicator', name: 'ema', period: 9, offset: 3 },
+        right: { type: 'number', value: 1 },
+      });
+      expect(issues).toEqual([]);
     });
 
     it('rejects a non-finite number operand', () => {
@@ -254,6 +280,223 @@ describe('collectRuleTreeIssues', () => {
         expect(issues.map((i) => i.code)).toContain('INVALID_TREND_PERIOD');
       },
     );
+
+    it('accepts an absent trend mode (defaults to STRICT) and each explicit mode', () => {
+      for (const mode of [undefined, 'STRICT', 'SOFT', 'NET']) {
+        const issues = collectRuleTreeIssues({
+          type: 'trend',
+          direction: 'UP',
+          period: 5,
+          mode,
+          target: { type: 'price', field: 'close' },
+        });
+        expect(issues).toEqual([]);
+      }
+    });
+
+    it('rejects an unknown trend mode', () => {
+      const issues = collectRuleTreeIssues(
+        {
+          type: 'trend',
+          direction: 'UP',
+          period: 5,
+          mode: 'LOOSE',
+          target: { type: 'price', field: 'close' },
+        },
+        'entry',
+      );
+      expect(issues.map((i) => i.code)).toContain('UNKNOWN_TREND_MODE');
+    });
+
+    describe('"not" node', () => {
+      it('recurses into the wrapped condition and reports issues at .condition', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'not',
+            condition: {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'indicator', name: 'adx' },
+              right: { type: 'number', value: 25 },
+            },
+          },
+          'entry',
+        );
+        expect(issues).toHaveLength(1);
+        expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+        expect(issues[0]!.path).toBe('entry.condition.left');
+      });
+
+      it('reports a missing condition', () => {
+        const issues = collectRuleTreeIssues({ type: 'not' }, 'entry');
+        expect(issues).toEqual([
+          {
+            path: 'entry.condition',
+            code: 'MISSING_NODE',
+            message: expect.any(String),
+          },
+        ]);
+      });
+
+      it('accepts a well-formed wrapped condition', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'not',
+          condition: {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: { type: 'number', value: 1 },
+          },
+        });
+        expect(issues).toEqual([]);
+      });
+    });
+
+    describe('"cross" node', () => {
+      it('rejects an unknown cross direction', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'cross',
+            direction: 'SIDEWAYS',
+            left: { type: 'indicator', name: 'ema', period: 9 },
+            right: { type: 'indicator', name: 'ema', period: 20 },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('UNKNOWN_CROSS_DIRECTION');
+      });
+
+      it('inspects both operands', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'cross',
+            direction: 'UP',
+            left: { type: 'indicator', name: 'adx' },
+            right: { type: 'indicator', name: 'macd' },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.path)).toEqual([
+          'entry.left',
+          'entry.right',
+        ]);
+      });
+
+      it('accepts a well-formed cross node', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'cross',
+          direction: 'ANY',
+          left: { type: 'indicator', name: 'ema', period: 9 },
+          right: { type: 'indicator', name: 'ema', period: 20 },
+        });
+        expect(issues).toEqual([]);
+      });
+    });
+
+    describe('"constant" node', () => {
+      it.each([undefined, 'true', 1, null])(
+        'rejects a non-boolean value (%p)',
+        (value) => {
+          const issues = collectRuleTreeIssues(
+            { type: 'constant', value },
+            'entry',
+          );
+          expect(issues).toEqual([
+            {
+              path: 'entry',
+              code: 'INVALID_CONSTANT_VALUE',
+              message: expect.any(String),
+            },
+          ]);
+        },
+      );
+
+      it.each([true, false])('accepts a boolean value (%p)', (value) => {
+        expect(collectRuleTreeIssues({ type: 'constant', value })).toEqual([]);
+      });
+    });
+
+    describe('"arith" operand', () => {
+      it('rejects an unknown arithmetic operator', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: {
+              type: 'arith',
+              operator: 'MOD',
+              left: { type: 'number', value: 1 },
+              right: { type: 'number', value: 2 },
+            },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('UNKNOWN_ARITH_OPERATOR');
+      });
+
+      it('recurses into both sides, reporting the nested path', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: {
+              type: 'arith',
+              operator: 'ADD',
+              left: { type: 'indicator', name: 'ema', period: 20 },
+              right: { type: 'indicator', name: 'adx' }, // missing subField
+            },
+          },
+          'entry',
+        );
+        expect(issues).toHaveLength(1);
+        expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+        expect(issues[0]!.path).toBe('entry.right.right');
+      });
+
+      it('accepts a well-formed nested arithmetic expression', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: {
+            type: 'arith',
+            operator: 'ADD',
+            left: { type: 'indicator', name: 'ema', period: 20 },
+            right: {
+              type: 'arith',
+              operator: 'MUL',
+              left: { type: 'indicator', name: 'atr', period: 14 },
+              right: { type: 'number', value: 2 },
+            },
+          },
+        });
+        expect(issues).toEqual([]);
+      });
+
+      // Protège le chemin bougie d'un arbre pathologique : voir MAX_ARITH_DEPTH.
+      it('rejects arithmetic expressions nested beyond the maximum depth', () => {
+        let deeplyNested: unknown = { type: 'number', value: 1 };
+        for (let i = 0; i < 10; i++) {
+          deeplyNested = {
+            type: 'arith',
+            operator: 'ADD',
+            left: deeplyNested,
+            right: { type: 'number', value: 1 },
+          };
+        }
+
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: deeplyNested,
+        });
+
+        expect(issues.map((i) => i.code)).toContain('ARITH_TOO_DEEP');
+      });
+    });
 
     it('does not flag an absent optional field as a missing node', () => {
       // `exit` est une absence légitime (optionnel dans `SideRules`) : c'est

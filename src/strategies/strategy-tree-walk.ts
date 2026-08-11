@@ -1,4 +1,4 @@
-import type { ComparisonCondition, Operand, RuleNode, TrendCondition } from './strategy-engine.type.js';
+import type { ComparisonCondition, CrossCondition, Operand, RuleNode, TrendCondition } from './strategy-engine.type.js';
 
 /**
  * ============================================================================
@@ -23,18 +23,51 @@ import type { ComparisonCondition, Operand, RuleNode, TrendCondition } from './s
  */
 export type RuleTreeMalformation =
   | { reason: 'UNKNOWN_NODE_TYPE'; node: unknown }
-  | { reason: 'NON_ARRAY_CONDITIONS'; node: unknown };
+  | { reason: 'NON_ARRAY_CONDITIONS'; node: unknown }
+  | { reason: 'UNKNOWN_OPERAND_TYPE'; operand: unknown };
 
 export interface RuleTreeVisitor {
   /** Appelé pour chaque nœud visité, avant la descente dans ses enfants/opérandes. */
   onNode?: (node: RuleNode) => void;
-  /** Appelé pour chaque opérande atteignable (`comparison.left`/`.right`, `trend.target`). */
+  /**
+   * Appelé pour chaque opérande *feuille* atteignable (`comparison.left`/`.right`,
+   * `trend.target`, `cross.left`/`.right`). Un opérande `arith` n'est jamais
+   * transmis lui-même : le walker descend dans `.left`/`.right` jusqu'aux
+   * feuilles (`price`/`indicator`/`number`) — sans quoi un indicateur niché
+   * dans une expression arithmétique ne serait jamais calculé. `key` désigne
+   * l'emplacement sur le nœud parent, pas la position dans l'arbre `arith`.
+   */
   onOperand?: (
     operand: Operand,
-    context: { node: ComparisonCondition | TrendCondition; key: 'left' | 'right' | 'target' },
+    context: {
+      node: ComparisonCondition | TrendCondition | CrossCondition;
+      key: 'left' | 'right' | 'target';
+    },
   ) => void;
-  /** Appelé quand la structure rencontrée ne correspond à aucun type de nœud connu. */
+  /** Appelé quand la structure rencontrée ne correspond à aucun type de nœud/opérande connu. */
   onMalformed?: (malformation: RuleTreeMalformation) => void;
+}
+
+function walkOperand(
+  operand: Operand,
+  context: {
+    node: ComparisonCondition | TrendCondition | CrossCondition;
+    key: 'left' | 'right' | 'target';
+  },
+  visitor: RuleTreeVisitor,
+): void {
+  if (!operand || typeof operand !== 'object') {
+    visitor.onMalformed?.({ reason: 'UNKNOWN_OPERAND_TYPE', operand });
+    return;
+  }
+
+  if (operand.type === 'arith') {
+    walkOperand(operand.left, context, visitor);
+    walkOperand(operand.right, context, visitor);
+    return;
+  }
+
+  visitor.onOperand?.(operand, context);
 }
 
 /**
@@ -71,14 +104,32 @@ export function walkRuleTree(node: RuleNode, visitor: RuleTreeVisitor): void {
 
     case 'comparison': {
       visitor.onNode?.(node);
-      visitor.onOperand?.(node.left, { node, key: 'left' });
-      visitor.onOperand?.(node.right, { node, key: 'right' });
+      walkOperand(node.left, { node, key: 'left' }, visitor);
+      walkOperand(node.right, { node, key: 'right' }, visitor);
       return;
     }
 
     case 'trend': {
       visitor.onNode?.(node);
-      visitor.onOperand?.(node.target, { node, key: 'target' });
+      walkOperand(node.target, { node, key: 'target' }, visitor);
+      return;
+    }
+
+    case 'cross': {
+      visitor.onNode?.(node);
+      walkOperand(node.left, { node, key: 'left' }, visitor);
+      walkOperand(node.right, { node, key: 'right' }, visitor);
+      return;
+    }
+
+    case 'not': {
+      visitor.onNode?.(node);
+      walkRuleTree(node.condition, visitor);
+      return;
+    }
+
+    case 'constant': {
+      visitor.onNode?.(node);
       return;
     }
 

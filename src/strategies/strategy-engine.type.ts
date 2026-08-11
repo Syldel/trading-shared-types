@@ -8,10 +8,23 @@ import type { IndicatorOperand } from "../indicators/indicator-request.types";
 export const PRICE_FIELDS = ['open', 'high', 'low', 'close', 'volume'] as const;
 export type PriceField = typeof PRICE_FIELDS[number];
 
+export const ARITH_OPERATORS = ['ADD', 'SUB', 'MUL', 'DIV'] as const;
+export type ArithOperator = typeof ARITH_OPERATORS[number];
+
+/**
+ * `arith` combine récursivement deux opérandes (ex: `ema20 + atr14 * 2`,
+ * représenté par l'imbrication des nœuds, pas par une chaîne à parser).
+ *
+ * `offset` ne s'applique qu'aux opérandes qui désignent une position dans le
+ * temps (`price`, `indicator`) : une constante n'a pas de dimension
+ * temporelle, et un `arith` n'offsette pas le résultat en bloc — chaque
+ * feuille porte son propre offset si besoin.
+ */
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }
-  | ({ type: 'indicator' } & IndicatorOperand)
-  | { type: 'number'; value: number };
+  | ({ type: 'indicator'; offset?: number } & IndicatorOperand)
+  | { type: 'number'; value: number }
+  | { type: 'arith'; operator: ArithOperator; left: Operand; right: Operand };
 
 export const COMPARISON_OPERATORS = ['GT', 'GTE', 'LT', 'LTE', 'EQ'] as const;
 export type ComparisonOperator = typeof COMPARISON_OPERATORS[number];
@@ -93,11 +106,65 @@ export interface TimelineSignal {
 export const TREND_DIRECTIONS = ['UP', 'DOWN'] as const;
 export type TrendDirection = typeof TREND_DIRECTIONS[number];
 
+/**
+ * `STRICT` (défaut, comportement historique) : chaque pas de la fenêtre doit
+ * être strictement monotone (`>`/`<`) — un seul palier invalide la tendance.
+ * `SOFT` : tolère les paliers (`>=`/`<=`) — utile sur un prix qui plafonne
+ * quelques bougies sans inverser. `NET` : ignore le chemin, ne compare que
+ * les deux extrémités de la fenêtre (valeur actuelle vs valeur à `t-period`).
+ */
+export const TREND_MODES = ['STRICT', 'SOFT', 'NET'] as const;
+export type TrendMode = typeof TREND_MODES[number];
+
 export interface TrendCondition {
   type: 'trend';
   target: Operand;
   direction: TrendDirection;
   period: number;
+  /** Absent = `STRICT`, pour ne changer le comportement d'aucune stratégie déjà stockée. */
+  mode?: TrendMode;
 }
 
-export type RuleNode = LogicalGroup | ComparisonCondition | TrendCondition;
+/** Négation logique. Voir `docs/trading/strategy-engine.md#negation-and-missing-data`
+ * dans nest-trading-bot pour la sémantique vis-à-vis d'une donnée manquante
+ * (une valeur indéterminée ne doit jamais devenir `true` sous `not`). */
+export interface NotCondition {
+  type: 'not';
+  condition: RuleNode;
+}
+
+export const CROSS_DIRECTIONS = ['UP', 'DOWN', 'ANY'] as const;
+export type CrossDirection = typeof CROSS_DIRECTIONS[number];
+
+/**
+ * Détecte un croisement entre deux opérandes entre la bougie précédente et
+ * la bougie courante (pas d'`offset` : un croisement est par nature un
+ * évènement `t-1` vs `t`). `UP` = `left` franchit `right` par le haut,
+ * `DOWN` = par le bas, `ANY` = l'un ou l'autre.
+ */
+export interface CrossCondition {
+  type: 'cross';
+  left: Operand;
+  right: Operand;
+  direction: CrossDirection;
+}
+
+/**
+ * Condition toujours vraie ou toujours fausse, indépendante des données de
+ * marché. Comble l'ambiguïté d'un groupe logique vide (qui évalue toujours à
+ * `false`, voir `StrategyEngineService.compileTreeIndicators`) : pour
+ * exprimer « toujours vrai » explicitement plutôt que par un vide qui se lit
+ * comme un oubli.
+ */
+export interface ConstantCondition {
+  type: 'constant';
+  value: boolean;
+}
+
+export type RuleNode =
+  | LogicalGroup
+  | ComparisonCondition
+  | TrendCondition
+  | NotCondition
+  | CrossCondition
+  | ConstantCondition;
