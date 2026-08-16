@@ -261,6 +261,63 @@ describe('walkRuleTree', () => {
     expect(operands).toEqual(['transform', 'number', 'number']);
   });
 
+  // Comme `arith`, `fn` n'a pas de série propre à matérialiser : c'est ici,
+  // et non dans le consommateur, que ses `args` sont décomposés jusqu'à leurs
+  // feuilles.
+  it('descends into "fn" args down to their leaves, never emitting the fn node itself', () => {
+    const tree: RuleNode = {
+      type: 'comparison',
+      operator: 'GT',
+      left: { type: 'price', field: 'close' },
+      right: {
+        type: 'fn',
+        kind: 'max',
+        args: [
+          { type: 'indicator', name: 'ichimoku', subField: 'spanA' },
+          { type: 'indicator', name: 'ichimoku', subField: 'spanB' },
+        ],
+      },
+    };
+
+    const operands: { type: string; key: string }[] = [];
+    walkRuleTree(tree, {
+      onOperand: (operand, ctx) => operands.push({ type: operand.type, key: ctx.key }),
+    });
+
+    expect(operands).toEqual([
+      { type: 'price', key: 'left' },
+      { type: 'indicator', key: 'right' }, // ichimoku.spanA
+      { type: 'indicator', key: 'right' }, // ichimoku.spanB
+    ]);
+    expect(operands.some((o) => o.type === 'fn')).toBe(false);
+  });
+
+  it('descends into "fn" down to a nested "transform" leaf without unwrapping it', () => {
+    const tree: RuleNode = {
+      type: 'comparison',
+      operator: 'GT',
+      left: {
+        type: 'fn',
+        kind: 'min',
+        args: [
+          { type: 'indicator', name: 'ema', period: 9 },
+          {
+            type: 'transform',
+            kind: 'zscore',
+            period: 200,
+            source: { type: 'indicator', name: 'adx', subField: 'adx' },
+          },
+        ],
+      },
+      right: { type: 'number', value: 0 },
+    };
+
+    const operands: string[] = [];
+    walkRuleTree(tree, { onOperand: (operand) => operands.push(operand.type) });
+
+    expect(operands).toEqual(['indicator', 'transform', 'number']);
+  });
+
   it('reports UNKNOWN_OPERAND_TYPE for a missing operand inside a comparison', () => {
     const onMalformed = jest.fn();
 

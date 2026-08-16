@@ -22,6 +22,16 @@ export const TRANSFORM_KINDS = ['zscore', 'percentile', 'ratioToMa', 'slope'] as
 export type TransformKind = typeof TRANSFORM_KINDS[number];
 
 /**
+ * Fonctions combinatoires appliquées à plusieurs opérandes au même index de
+ * bougie (voir le nœud `fn` ci-dessous) — à ne pas confondre avec
+ * `TransformKind`, qui glisse dans le temps sur une seule série. Métadonnées
+ * (libellé, arité) dans `FUNCTION_REGISTRY` (function-registry.ts), même
+ * esprit que `TRANSFORM_KINDS`/`TRANSFORM_REGISTRY`.
+ */
+export const FUNCTION_KINDS = ['min', 'max'] as const;
+export type FunctionKind = typeof FUNCTION_KINDS[number];
+
+/**
  * `arith` combine récursivement deux opérandes (ex: `ema20 + atr14 * 2`,
  * représenté par l'imbrication des nœuds, pas par une chaîne à parser).
  *
@@ -33,17 +43,30 @@ export type TransformKind = typeof TRANSFORM_KINDS[number];
  * sur un `IndicatorOperand` se résout via `INDICATOR_DEFAULTS` — jamais de
  * valeur par défaut dupliquée ici.
  *
+ * `fn` applique une fonction combinatoire (`FunctionKind`) à une liste
+ * d'`args` — un `Operand` quelconque chacun, composition libre comme pour
+ * `transform` — évaluée au même index (ex: `max(ichimoku.spanA,
+ * ichimoku.spanB)`, le haut du nuage Ichimoku). Distinct d'`arith` : `arith`
+ * est strictement binaire et infixe (`ADD`/`SUB`/`MUL`/`DIV`), `fn` est
+ * variadique (au moins `FUNCTION_REGISTRY[kind].minArgs` arguments, voir
+ * `strategy-validation.ts` pour le plafond structurel). Si un seul `args`
+ * résout à une valeur indéterminée, `fn` est indéterminé dans son ensemble —
+ * jamais calculé sur un sous-ensemble des arguments disponibles (voir
+ * `docs/trading/strategy-engine.md#negation-and-missing-data` dans
+ * nest-trading-bot).
+ *
  * `offset` ne s'applique qu'aux opérandes qui désignent une position dans le
  * temps (`price`, `indicator`, `transform`) : une constante n'a pas de
- * dimension temporelle, et un `arith` n'offsette pas le résultat en bloc —
- * chaque feuille porte son propre offset si besoin.
+ * dimension temporelle, et un `arith`/`fn` n'offsette pas le résultat en
+ * bloc — chaque feuille porte son propre offset si besoin.
  */
 export type Operand =
   | { type: 'price'; field: PriceField; offset?: number }
   | ({ type: 'indicator'; offset?: number } & IndicatorOperand)
   | { type: 'number'; value: number }
   | { type: 'arith'; operator: ArithOperator; left: Operand; right: Operand }
-  | { type: 'transform'; kind: TransformKind; period?: number; source: Operand; offset?: number };
+  | { type: 'transform'; kind: TransformKind; period?: number; source: Operand; offset?: number }
+  | { type: 'fn'; kind: FunctionKind; args: Operand[] };
 
 export const COMPARISON_OPERATORS = ['GT', 'GTE', 'LT', 'LTE', 'EQ'] as const;
 export type ComparisonOperator = typeof COMPARISON_OPERATORS[number];

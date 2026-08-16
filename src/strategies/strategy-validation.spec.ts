@@ -635,6 +635,161 @@ describe('collectRuleTreeIssues', () => {
       });
     });
 
+    describe('"fn" operand', () => {
+      it('rejects an unknown function kind', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: {
+              type: 'fn',
+              kind: 'avg',
+              args: [
+                { type: 'number', value: 1 },
+                { type: 'number', value: 2 },
+              ],
+            },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_FN_KIND');
+      });
+
+      it.each([
+        { args: [] },
+        { args: [{ type: 'number', value: 1 }] },
+      ])('rejects "max" with fewer than 2 args (%#)', ({ args }) => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: { type: 'fn', kind: 'max', args },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_FN_ARITY');
+      });
+
+      it('rejects "max" whose "args" is not an array', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: { type: 'fn', kind: 'max', args: 'bogus' },
+          },
+          'entry',
+        );
+        expect(issues.map((i) => i.code)).toContain('INVALID_FN_ARITY');
+      });
+
+      it('rejects "max" beyond the structural argument cap', () => {
+        const args = Array.from({ length: 9 }, (_, i) => ({
+          type: 'number' as const,
+          value: i,
+        }));
+
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: { type: 'fn', kind: 'max', args },
+        });
+        expect(issues.map((i) => i.code)).toContain('INVALID_FN_ARITY');
+      });
+
+      it('accepts a well-formed variadic "max" (Kumo top: spanA, spanB)', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: {
+            type: 'fn',
+            kind: 'max',
+            args: [
+              { type: 'indicator', name: 'ichimoku', subField: 'spanA' },
+              { type: 'indicator', name: 'ichimoku', subField: 'spanB' },
+            ],
+          },
+        });
+        expect(issues).toEqual([]);
+      });
+
+      it('recurses into each arg, reporting the nested path', () => {
+        const issues = collectRuleTreeIssues(
+          {
+            type: 'comparison',
+            operator: 'GT',
+            left: { type: 'price', field: 'close' },
+            right: {
+              type: 'fn',
+              kind: 'max',
+              args: [
+                { type: 'indicator', name: 'ema', period: 20 },
+                { type: 'indicator', name: 'adx' }, // missing subField
+              ],
+            },
+          },
+          'entry',
+        );
+        expect(issues).toHaveLength(1);
+        expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+        expect(issues[0]!.path).toBe('entry.right.args[1]');
+      });
+
+      it('accepts a "fn" composed of another "fn" and a "transform" (mixed composition)', () => {
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: {
+            type: 'fn',
+            kind: 'min',
+            args: [
+              {
+                type: 'fn',
+                kind: 'max',
+                args: [
+                  { type: 'indicator', name: 'ema', period: 9 },
+                  { type: 'indicator', name: 'ema', period: 20 },
+                ],
+              },
+              {
+                type: 'transform',
+                kind: 'zscore',
+                period: 200,
+                source: { type: 'indicator', name: 'adx', subField: 'adx' },
+              },
+            ],
+          },
+        });
+        expect(issues).toEqual([]);
+      });
+
+      // Protège le chemin bougie d'un arbre pathologique : voir MAX_OPERAND_DEPTH.
+      it('rejects function expressions nested beyond the maximum depth', () => {
+        let deeplyNested: unknown = { type: 'number', value: 1 };
+        for (let i = 0; i < 10; i++) {
+          deeplyNested = {
+            type: 'fn',
+            kind: 'max',
+            args: [deeplyNested, { type: 'number', value: 1 }],
+          };
+        }
+
+        const issues = collectRuleTreeIssues({
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close' },
+          right: deeplyNested,
+        });
+
+        expect(issues.map((i) => i.code)).toContain('FN_TOO_DEEP');
+      });
+    });
+
     it('does not flag an absent optional field as a missing node', () => {
       // `exit` est une absence légitime (optionnel dans `SideRules`) : c'est
       // aux call sites de ne pas appeler `collectRuleTreeIssues` dessus, pas à

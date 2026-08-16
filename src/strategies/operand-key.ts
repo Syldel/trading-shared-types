@@ -34,5 +34,7 @@ export function buildOperandKey(operand: Operand): string {
       return `arith_${operand.operator}(${buildOperandKey(operand.left)},${buildOperandKey(operand.right)})`;
     case 'transform':
       return `transform_${operand.kind}_${operand.period ?? 'd'}(${buildOperandKey(operand.source)})`;
+    case 'fn':
+      return `fn_${operand.kind}(${operand.args.map(buildOperandKey).join(',')})`;
   }
 }

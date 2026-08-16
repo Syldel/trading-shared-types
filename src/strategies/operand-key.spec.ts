@@ -93,6 +93,43 @@ describe('buildOperandKey', () => {
     );
   });
 
+  it('builds a key for a "fn" operand from its kind and each arg key, in order', () => {
+    const operand: Operand = {
+      type: 'fn',
+      kind: 'max',
+      args: [
+        { type: 'indicator', name: 'ichimoku', subField: 'spanA' },
+        { type: 'indicator', name: 'ichimoku', subField: 'spanB' },
+      ],
+    };
+
+    expect(buildOperandKey(operand)).toBe(
+      'fn_max(ichimoku_9_26_52_26_spanA,ichimoku_9_26_52_26_spanB)',
+    );
+  });
+
+  it('composes a key for a "fn" operand nested inside another "fn" operand', () => {
+    const operand: Operand = {
+      type: 'fn',
+      kind: 'min',
+      args: [
+        {
+          type: 'fn',
+          kind: 'max',
+          args: [
+            { type: 'indicator', name: 'ema', period: 9 },
+            { type: 'indicator', name: 'ema', period: 20 },
+          ],
+        },
+        { type: 'price', field: 'close' },
+      ],
+    };
+
+    expect(buildOperandKey(operand)).toBe(
+      'fn_min(fn_max(ema_9,ema_20),price_close)',
+    );
+  });
+
   it('is deterministic: two structurally identical operands produce the same key', () => {
     const a: Operand = {
       type: 'transform',

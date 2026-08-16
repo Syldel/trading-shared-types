@@ -9,6 +9,7 @@ export * from './indicators/indicator-subfields.js';
 export * from './indicators/indicator-registry.js';
 export * from './indicators/indicator-defaults.js';
 export * from './strategies/backtest-summary.type.js';
+export * from './strategies/function-registry.js';
 export * from './strategies/operand-key.js';
 export * from './strategies/strategy-engine.type.js';
 export * from './strategies/strategy-tree-walk.js';

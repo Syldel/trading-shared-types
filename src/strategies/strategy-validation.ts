@@ -7,16 +7,19 @@ import {
   validateIndicatorOperand,
   type IndicatorOperandIssueCode,
 } from '../indicators/indicator-subfields.js';
+import { FUNCTION_REGISTRY } from './function-registry.js';
 import { buildOperandKey } from './operand-key.js';
 import {
   ARITH_OPERATORS,
   COMPARISON_OPERATORS,
   CROSS_DIRECTIONS,
+  FUNCTION_KINDS,
   LOGICAL_OPERATORS,
   PRICE_FIELDS,
   TRANSFORM_KINDS,
   TREND_DIRECTIONS,
   TREND_MODES,
+  type FunctionKind,
   type Operand,
   type StrategyRules,
 } from './strategy-engine.type.js';
@@ -64,6 +67,9 @@ export type StrategyStructureIssueCode =
   | 'INVALID_TRANSFORM_KIND'
   | 'INVALID_TRANSFORM_PERIOD'
   | 'TRANSFORM_TOO_DEEP'
+  | 'INVALID_FN_KIND'
+  | 'INVALID_FN_ARITY'
+  | 'FN_TOO_DEEP'
   | 'UNKNOWN_CROSS_DIRECTION'
   | 'INVALID_CONSTANT_VALUE'
   | 'EMPTY_STRATEGY_RULES'
@@ -127,6 +133,16 @@ function collectOffsetIssue(
  * propre code d'anomalie (`ARITH_TOO_DEEP` / `TRANSFORM_TOO_DEEP`), pour que
  * le diagnostic reste précis. */
 const MAX_OPERAND_DEPTH = 6;
+
+/**
+ * Plafond structurel du nombre d'arguments d'un nœud `fn` variadique (ex:
+ * `min`/`max`) : protège le chemin bougie d'un arbre pathologique, dans le
+ * même esprit que `MAX_OPERAND_DEPTH` mais sur l'arité plutôt que la
+ * profondeur. Constante interne, pas une caractéristique métier d'une
+ * fonction donnée — `FunctionMetadata.maxArgs` (function-registry.ts) peut
+ * être plus restrictive mais jamais plus permissive que ce plafond.
+ */
+const MAX_FN_ARGS = 8;
 
 /**
  * Valide la forme d'un opérande (`price` | `indicator` | `number` | `arith` |
@@ -294,6 +310,66 @@ export function collectOperandStructureIssues(
       ];
     }
 
+    case 'fn': {
+      const issues: StrategyValidationIssue[] = [];
+
+      const isKnownKind = FUNCTION_KINDS.includes(
+        node.kind as (typeof FUNCTION_KINDS)[number],
+      );
+      if (!isKnownKind) {
+        issues.push({
+          path,
+          code: 'INVALID_FN_KIND',
+          allowed: FUNCTION_KINDS,
+          message:
+            `Unknown function kind "${String(node.kind)}" at ${path}. ` +
+            `Allowed: ${FUNCTION_KINDS.join(', ')}.`,
+        });
+      }
+
+      const args = node.args;
+      const argCount = Array.isArray(args) ? args.length : -1;
+
+      // L'arité dépend du kind (`FUNCTION_REGISTRY`), contrairement au
+      // plancher de période d'un `transform` (fixe, `>= 2` pour tous les
+      // kinds) : elle n'est donc validée que si le kind est connu.
+      if (isKnownKind) {
+        const meta = FUNCTION_REGISTRY[node.kind as FunctionKind];
+        const maxAllowed = Math.min(meta.maxArgs ?? MAX_FN_ARGS, MAX_FN_ARGS);
+
+        if (argCount < meta.minArgs || argCount > maxAllowed) {
+          issues.push({
+            path,
+            code: 'INVALID_FN_ARITY',
+            message:
+              `Function "${node.kind}" at ${path} requires between ${meta.minArgs} ` +
+              `and ${maxAllowed} arguments ` +
+              `(received: ${argCount < 0 ? String(args) : argCount}).`,
+          });
+        }
+      }
+
+      if (!Array.isArray(args)) return issues;
+
+      if (depth >= MAX_OPERAND_DEPTH) {
+        issues.push({
+          path,
+          code: 'FN_TOO_DEEP',
+          message:
+            `Function expression at ${path} exceeds the maximum nesting ` +
+            `depth (${MAX_OPERAND_DEPTH}).`,
+        });
+        return issues;
+      }
+
+      return [
+        ...issues,
+        ...args.flatMap((arg, index) =>
+          collectOperandStructureIssues(arg, `${path}.args[${index}]`, depth + 1),
+        ),
+      ];
+    }
+
     default:
       return [
         {
@@ -301,7 +377,7 @@ export function collectOperandStructureIssues(
           code: 'UNKNOWN_OPERAND_TYPE',
           message:
             `Unknown operand type "${String(node.type)}" at ${path}. ` +
-            `Allowed: price, indicator, number, arith, transform.`,
+            `Allowed: price, indicator, number, arith, transform, fn.`,
         },
       ];
   }

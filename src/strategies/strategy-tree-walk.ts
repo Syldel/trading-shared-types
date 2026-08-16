@@ -45,6 +45,10 @@ export interface RuleTreeVisitor {
    * Un consommateur qui ignore `transform` (ex: l'extraction d'ancres
    * d'ordre, qui ne s'intéresse qu'à `indicator`) n'a donc pas à connaître
    * cette récursion interne.
+   *
+   * `fn` est décomposé comme `arith` (jamais transmis lui-même) : il n'a pas
+   * de série propre à matérialiser, seulement une liste d'`args` à visiter
+   * jusqu'à leurs feuilles — même raisonnement que pour `arith` ci-dessus.
    */
   onOperand?: (
     operand: Operand,
@@ -73,6 +77,13 @@ function walkOperand(
   if (operand.type === 'arith') {
     walkOperand(operand.left, context, visitor);
     walkOperand(operand.right, context, visitor);
+    return;
+  }
+
+  if (operand.type === 'fn') {
+    for (const arg of operand.args) {
+      walkOperand(arg, context, visitor);
+    }
     return;
   }
 
