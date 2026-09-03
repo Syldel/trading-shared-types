@@ -33,6 +33,7 @@ export type IndicatorRequest =
   | { name: BollingerFamilyName; period?: number; stdDev?: number }
   | { name: 'supertrend'; period?: number; multiplier?: number }
   | { name: 'keltner'; period?: number; multiplier?: number }
+  | { name: 'donchian'; period?: number }
   | { name: 'stochrsi'; rsiPeriod?: number; stochasticPeriod?: number; kPeriod?: number; dPeriod?: number }
   | { name: 'pivotpoints'; pivotType?: PivotPointsType };
 
@@ -92,6 +93,11 @@ export type IndicatorOperand =
       subField: 'upper' | 'middle' | 'lower'
     }
   | {
+      name: 'donchian';
+      period?: number;
+      subField: 'upper' | 'middle' | 'lower' | 'width'
+    }
+  | {
       name: 'stochrsi';
       rsiPeriod?: number;
       stochasticPeriod?: number;
@@ -136,6 +142,7 @@ export const INDICATOR_NAMES = [
   'bbp',
   'supertrend',
   'keltner',
+  'donchian',
   'stochrsi',
   'pivotpoints',
 ] as const satisfies readonly IndicatorName[];

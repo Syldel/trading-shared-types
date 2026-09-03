@@ -61,6 +61,12 @@ export const INDICATOR_SUBFIELDS = {
     { name: 'middle', label: 'Middle Band (EMA)' },
     { name: 'lower', label: 'Lower Band' },
   ],
+  donchian: [
+    { name: 'upper', label: 'Upper Band (Highest High)' },
+    { name: 'middle', label: 'Middle Band' },
+    { name: 'lower', label: 'Lower Band (Lowest Low)' },
+    { name: 'width', label: 'Channel Width' },
+  ],
   supertrend: [
     { name: 'supertrend', label: 'Supertrend Line' },
     { name: 'direction', label: 'Direction (1 / -1)' },

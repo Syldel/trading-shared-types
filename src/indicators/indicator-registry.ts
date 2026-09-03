@@ -181,6 +181,13 @@ export const INDICATOR_REGISTRY: { [N in IndicatorName]: IndicatorMetadata } = {
     ],
     ...withSubFields('keltner'),
   },
+  donchian: {
+    name: 'donchian',
+    label: 'Donchian Channels',
+    overlay: true,
+    parameters: [numberParam('period', 'Period', 20)],
+    ...withSubFields('donchian'),
+  },
   pivotpoints: {
     name: 'pivotpoints',
     label: 'Pivot Points',

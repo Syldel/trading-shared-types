@@ -69,6 +69,7 @@ describe('INDICATOR_DEFAULTS (derived from INDICATOR_REGISTRY)', () => {
       bbp: { period: 20, stdDev: 2 },
       supertrend: { period: 10, multiplier: 3 },
       keltner: { period: 20, multiplier: 2 },
+      donchian: { period: 20 },
       stochrsi: { rsiPeriod: 14, stochasticPeriod: 14, kPeriod: 3, dPeriod: 3 },
       pivotpoints: { pivotType: 'standard' },
     });
@@ -125,6 +126,10 @@ describe('buildIndicatorKey (derived from INDICATOR_REGISTRY parameter order)', 
     ).toBe('supertrend_10_3');
     expect(buildIndicatorKey('keltner', { period: 20, multiplier: 2 })).toBe(
       'keltner_20_2',
+    );
+    expect(buildIndicatorKey('donchian', { period: 20 })).toBe('donchian_20');
+    expect(buildIndicatorKey('donchian', { period: 20 }, 'width')).toBe(
+      'donchian_20_width',
     );
 
     expect(buildIndicatorKey('pivotpoints', { pivotType: 'standard' })).toBe(

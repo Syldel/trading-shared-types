@@ -60,6 +60,13 @@ export interface KeltnerValue {
   lower: number;
 }
 
+export interface DonchianValue {
+  upper: number;
+  middle: number;
+  lower: number;
+  width: number;
+}
+
 export interface StochRsiValue {
   stochRSI: number;
   k: number;
@@ -93,6 +100,7 @@ export interface IchimokuSeriesPoint extends IchimokuValue, TimePoint {}
 export interface BollingerBandsSeriesPoint extends BollingerBandsValue, TimePoint {}
 export interface SupertrendSeriesPoint extends SupertrendValue, TimePoint {}
 export interface KeltnerSeriesPoint extends KeltnerValue, TimePoint {}
+export interface DonchianSeriesPoint extends DonchianValue, TimePoint {}
 export interface StochRsiSeriesPoint extends StochRsiValue, TimePoint {}
 export interface PivotPointsSeriesPoint extends PivotPointsValue, TimePoint {}
 
@@ -108,5 +116,6 @@ export type IndicatorSeriesType =
   | BollingerBandsSeriesPoint[]
   | SupertrendSeriesPoint[]
   | KeltnerSeriesPoint[]
+  | DonchianSeriesPoint[]
   | StochRsiSeriesPoint[]
   | PivotPointsSeriesPoint[];

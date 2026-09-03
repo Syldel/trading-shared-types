@@ -14,6 +14,7 @@ describe('INDICATOR_SUBFIELDS registry', () => {
       [
         'adx',
         'bb',
+        'donchian',
         'ichimoku',
         'keltner',
         'macd',
