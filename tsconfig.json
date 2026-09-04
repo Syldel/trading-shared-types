@@ -17,7 +17,7 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "src",
-    "types": ["jest"]
+    "types": ["jest", "node"]
   },
   "include": ["src"],
   "exclude": ["dist", "node_modules"]

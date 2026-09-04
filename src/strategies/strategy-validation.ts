@@ -88,6 +88,58 @@ export interface StrategyValidationIssue {
   allowed?: readonly string[];
 }
 
+/**
+ * Codes d'anomalie dont le verdict dépend d'un **catalogue runtime** — noms
+ * d'indicateur (`IndicatorOperandIssueCode`, résolus via `INDICATOR_NAMES` /
+ * `INDICATOR_SUBFIELDS`) ou `kind` de transform/fonction (résolus via
+ * `TRANSFORM_KINDS` / `FUNCTION_KINDS`) — et non d'une union TypeScript figée
+ * à la compilation.
+ *
+ * Un serveur peut faire grandir ces catalogues (nouvel indicateur, nouvelle
+ * transformation) sans que ça exige un nouveau type ni un rebuild — c'est
+ * précisément ce qui rend un catalogue préférable à une union pour ces
+ * cas-là (voir `docs/trading/mobile-app-integration.md` dans
+ * nest-trading-bot). Mais ça signifie aussi qu'une copie compilée du
+ * paquet, côté client, peut être en retard sur le catalogue réellement
+ * exécuté par le serveur au moment où elle valide.
+ *
+ * Un client ne doit donc **jamais** bloquer localement sur l'un de ces
+ * codes : un "kind" ou un nom d'indicateur qu'il ne reconnaît pas peut
+ * simplement être plus récent que sa propre copie. Seul `POST
+ * /exchanges/strategies/validate` (qui exécute le catalogue à jour) fait
+ * autorité pour eux — le client les ignore localement et attend le verdict
+ * serveur au moment de la sauvegarde.
+ *
+ * Tous les autres codes portent sur la **grammaire** de l'AST (type de
+ * nœud, opérateur, arité, profondeur...) : ils dépendent d'unions
+ * TypeScript figées à la compilation, dont la liste ne peut de toute façon
+ * pas diverger entre client et serveur sans qu'un rebuild soit déjà
+ * nécessaire des deux côtés. Ceux-là restent sûrs à bloquer localement.
+ */
+export const CATALOG_DEPENDENT_ISSUE_CODES: ReadonlySet<
+  StrategyValidationIssue['code']
+> = new Set<StrategyValidationIssue['code']>([
+  'UNKNOWN_INDICATOR',
+  'MISSING_SUBFIELD',
+  'UNKNOWN_SUBFIELD',
+  'UNEXPECTED_SUBFIELD',
+  'INVALID_TRANSFORM_KIND',
+  'INVALID_FN_KIND',
+  'INVALID_FN_ARITY',
+]);
+
+/**
+ * Un client ne doit bloquer localement que sur les anomalies de grammaire
+ * (voir `CATALOG_DEPENDENT_ISSUE_CODES`) : celles qui dépendent d'un
+ * catalogue runtime doivent rester silencieuses côté client et attendre le
+ * verdict de `POST /exchanges/strategies/validate`.
+ */
+export function isCatalogDependentIssue(
+  issue: Pick<StrategyValidationIssue, 'code'>,
+): boolean {
+  return CATALOG_DEPENDENT_ISSUE_CODES.has(issue.code);
+}
+
 /** Une valeur de nœud/opérande telle qu'elle arrive du JSON : non typée. */
 type RawNode = Record<string, unknown> | null | undefined;
 

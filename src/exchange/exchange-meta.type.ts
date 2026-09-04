@@ -1,6 +1,9 @@
 import type { ChartInterval } from "../chart.type";
 import type { AnchorSource, ExitBehavior, OrderExecutionType, TpslType } from "./exchange-config.interface";
 import type { LogicalGroup } from "../strategies/strategy-engine.type";
+import type { FunctionMetadata } from "../strategies/function-registry";
+import type { RuleBuilderGrammar } from "../strategies/rule-builder-grammar";
+import type { TransformMetadata } from "../strategies/transform-registry";
 import type { IndicatorMetadata } from "./indicator-meta.type";
 
 // ─── STRATEGY FORM SCHEMA ────────────────────────────────────────────────────
@@ -87,9 +90,19 @@ export interface StrategyFormSchema {
   orderTypes: OrderTypeMeta[];
   tpslTypes: TpslTypeMeta[];
   positionSides: PositionSideMeta[];
+  /** Libellés des énumérations du rule-builder (types de nœud, opérateurs, directions). */
+  ruleBuilderGrammar: RuleBuilderGrammar;
 }
 
 export interface ExchangesMetaResponse {
+  /**
+   * Version de `@syldel/trading-shared-types` exécutée par ce serveur (voir
+   * `PACKAGE_VERSION`, package-version.ts) — handshake de version : un
+   * client compare cette valeur à sa propre copie compilée pour détecter un
+   * catalogue plus récent côté serveur (indicateur/transform/fonction
+   * inconnus localement) plutôt que de le découvrir via un bug invisible.
+   */
+  packageVersion: string;
   intervals: ChartInterval[];
   exchanges: string[];
   strategies: Record<string, StrategyMeta[]>; // clé = nom d'exchange, ex: "hyperliquid"
@@ -97,5 +110,9 @@ export interface ExchangesMetaResponse {
     exitBehaviors: ExitBehaviorMeta[];
   };
   indicators: IndicatorMetadata[];
+  /** Transformations glissantes disponibles pour un opérande `transform` (voir `TRANSFORM_REGISTRY`). */
+  transforms: TransformMetadata[];
+  /** Fonctions combinatoires disponibles pour un opérande `fn` (voir `FUNCTION_REGISTRY`). */
+  functions: FunctionMetadata[];
   strategyFormSchema: StrategyFormSchema;
 }

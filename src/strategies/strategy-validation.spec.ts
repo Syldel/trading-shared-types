@@ -1,11 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
 import type { IExchangePair } from '../exchange/exchange-config.interface.js';
 import {
+  CATALOG_DEPENDENT_ISSUE_CODES,
   collectExecutableStrategyRulesIssues,
   collectExpressionIssues,
   collectPairIssues,
   collectRuleTreeIssues,
   collectStrategyRulesIssues,
+  isCatalogDependentIssue,
   toStrategyValidationResult,
   type StrategyValidationIssue,
 } from './strategy-validation.js';
@@ -1191,5 +1193,52 @@ describe('collectExpressionIssues', () => {
       },
     ]);
     expect(issues).toEqual([]);
+  });
+});
+
+describe('CATALOG_DEPENDENT_ISSUE_CODES / isCatalogDependentIssue', () => {
+  // Verrouille la partition exacte : un code ajouté ici sans mise à jour de
+  // ce test doit faire échouer la CI, pas passer inaperçu — c'est le seul
+  // rempart contre un client qui bloquerait à tort sur un catalogue plus
+  // récent côté serveur (voir l'en-tête de CATALOG_DEPENDENT_ISSUE_CODES).
+  it('contains exactly the catalog-backed codes (indicator names/subFields, transform/fn kinds, fn arity)', () => {
+    expect([...CATALOG_DEPENDENT_ISSUE_CODES].sort()).toEqual(
+      [
+        'UNKNOWN_INDICATOR',
+        'MISSING_SUBFIELD',
+        'UNKNOWN_SUBFIELD',
+        'UNEXPECTED_SUBFIELD',
+        'INVALID_TRANSFORM_KIND',
+        'INVALID_FN_KIND',
+        'INVALID_FN_ARITY',
+      ].sort(),
+    );
+  });
+
+  it.each([
+    'UNKNOWN_INDICATOR',
+    'MISSING_SUBFIELD',
+    'UNKNOWN_SUBFIELD',
+    'UNEXPECTED_SUBFIELD',
+    'INVALID_TRANSFORM_KIND',
+    'INVALID_FN_KIND',
+    'INVALID_FN_ARITY',
+  ] as const)('flags "%s" as catalog-dependent', (code) => {
+    expect(isCatalogDependentIssue({ code })).toBe(true);
+  });
+
+  it.each([
+    'MISSING_NODE',
+    'UNKNOWN_NODE_TYPE',
+    'EMPTY_LOGICAL_CONDITIONS',
+    'UNKNOWN_ARITH_OPERATOR',
+    'INVALID_OFFSET',
+    'UNKNOWN_TREND_MODE',
+    'UNKNOWN_CROSS_DIRECTION',
+    'ARITH_TOO_DEEP',
+    'EMPTY_STRATEGY_RULES',
+    'DUPLICATE_EXPRESSION_KEY',
+  ] as const)('does not flag "%s" — a compile-time AST code, safe to block on locally', (code) => {
+    expect(isCatalogDependentIssue({ code })).toBe(false);
   });
 });
