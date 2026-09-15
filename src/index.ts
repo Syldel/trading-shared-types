@@ -7,6 +7,7 @@ export * from './indicators/indicator-request.types.js';
 export * from './indicators/indicator-series.types.js';
 export * from './indicators/indicator-subfields.js';
 export * from './indicators/indicator-registry.js';
+export * from './indicators/indicator-operand-validation.js';
 export * from './indicators/indicator-defaults.js';
 export * from './indicators/indicator-lookback.js';
 export * from './strategies/backtest-summary.type.js';

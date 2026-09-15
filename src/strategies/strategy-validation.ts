@@ -6,7 +6,7 @@ import type {
 import {
   validateIndicatorOperand,
   type IndicatorOperandIssueCode,
-} from '../indicators/indicator-subfields.js';
+} from '../indicators/indicator-operand-validation.js';
 import { FUNCTION_REGISTRY } from './function-registry.js';
 import { buildOperandKey } from './operand-key.js';
 import {
@@ -85,6 +85,8 @@ export interface StrategyValidationIssue {
   /** Présents uniquement pour les anomalies d'opérande `indicator` (voir `validateIndicatorOperand`). */
   indicator?: unknown;
   subField?: unknown;
+  /** Paramètre visé par une anomalie `INVALID_INDICATOR_PARAM`. */
+  parameter?: string;
   allowed?: readonly string[];
 }
 
@@ -624,9 +626,14 @@ export function collectAnchorIssues(
 ): StrategyValidationIssue[] {
   if (!anchor || anchor.source !== 'INDICATOR') return [];
 
+  // L'ancre entière, et non `{ name, subField }` : ses paramètres sont portés
+  // à plat (`IIndicatorOrderAnchor` est un `IndicatorOperand`), et les
+  // réduire ici les soustrairait au contrôle de type de
+  // `INVALID_INDICATOR_PARAM`. Les clés qui ne sont pas des paramètres
+  // déclarés (`source`, `type`) sont ignorées par la validation.
   const issue = validateIndicatorOperand({
+    ...anchor,
     name: anchor.name.toLowerCase(),
-    subField: anchor.subField,
   });
 
   return issue ? [{ ...issue, path }] : [];
