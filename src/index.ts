@@ -10,7 +10,7 @@ export * from './indicators/indicator-registry.js';
 export * from './indicators/indicator-operand-validation.js';
 export * from './indicators/indicator-defaults.js';
 export * from './indicators/indicator-lookback.js';
-export * from './strategies/backtest-summary.type.js';
+export * from './strategies/backtest-report.js';
 export * from './strategies/function-registry.js';
 export * from './strategies/operand-key.js';
 export * from './strategies/rule-builder-grammar.js';

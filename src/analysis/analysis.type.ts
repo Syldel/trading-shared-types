@@ -1,7 +1,7 @@
 import type { ChartInterval } from "../chart.type";
 import type { IndicatorRequest } from "../indicators/indicator-request.types";
 import type { IndicatorSeriesType, SimpleSeriesPoint } from "../indicators/indicator-series.types";
-import type { BacktestSummary } from "../strategies/backtest-summary.type";
+import type { BacktestReport } from "../strategies/backtest-report";
 import type { Operand, TimelineSignal } from "../strategies/strategy-engine.type";
 import type { AnalysisStrategyRequest } from "../strategies/strategy.types";
 import type { AnalysisCandle } from "./analysis-candle.type";
@@ -48,7 +48,11 @@ export interface AnalysisResponse {
     id: string;
     name: string;
     signals: TimelineSignal[];
-    summary: BacktestSummary;
+    /**
+     * Calculé sur la fenêtre demandée (`AnalysisRequest.startTime`), jamais sur
+     * l'amorçage que le serveur ajoute devant — voir `buildBacktestReport`.
+     */
+    report: BacktestReport;
   }[];
   /** Clé = `id` fourni par la requête, sinon `buildOperandKey(operand)`. */
   expressions: Record<string, SimpleSeriesPoint[]>;

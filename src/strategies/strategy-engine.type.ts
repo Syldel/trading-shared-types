@@ -134,15 +134,28 @@ export type StrategySettingValue = number | boolean | string;
  */
 export type StrategySettings = Record<string, StrategySettingValue>;
 
+export const POSITION_SIDES = ['LONG', 'SHORT'] as const;
+export type PositionSide = typeof POSITION_SIDES[number];
+
+/**
+ * Un évènement de la timeline d'une stratégie : l'ouverture ou la fermeture
+ * d'une position d'un côté, au prix où le moteur la simule.
+ *
+ * Tout est obligatoire et typé. Une version précédente rangeait `side` et
+ * `price` dans un `metadata` indexé par chaîne, avec deux champs dérivés
+ * (`tradeProfitPercent`, `cumulativeProfitPercent`) arrondis à deux décimales
+ * par le moteur : le côté pouvait manquer sans que le compilateur le voie — le
+ * mobile le remplaçait alors par LONG, en silence —, et la somme d'arrondis
+ * accumulait une erreur invisible. Les chiffres se dérivent désormais des prix,
+ * sans arrondi, par `buildBacktestReport`.
+ */
 export interface TimelineSignal {
+  /** Temps d'ouverture (ms) de la bougie dont l'évaluation a produit le signal. */
   time: number;
   signal: 'ENTER' | 'EXIT';
-  metadata?: {
-    price: number;
-    tradeProfitPercent?: number;
-    cumulativeProfitPercent: number;
-    [key: string]: number | string | undefined;
-  };
+  side: PositionSide;
+  /** Prix d'exécution simulé. Aujourd'hui la clôture de la bougie du signal. */
+  price: number;
 }
 
 export const TREND_DIRECTIONS = ['UP', 'DOWN'] as const;
