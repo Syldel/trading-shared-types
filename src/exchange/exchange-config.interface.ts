@@ -102,6 +102,46 @@ export interface LatentOrderStrategy {
 
 export type TpslType = 'tp' | 'sl';
 
+/**
+ * Dans quel sens une protection déjà posée a le droit de se déplacer, **lu par
+ * rapport au prix courant**.
+ *
+ * Le sens est volontairement relatif au marché et non au trade : « se
+ * resserrer » veut dire la même chose pour un stop-loss et pour un take-profit,
+ * pour un long et pour un short. C'est ce qui manquait au booléen
+ * `trailingMode` qu'il remplace : son cliquet était écrit « dans le sens du
+ * trade », si bien qu'une même ligne de code resserrait le stop et **éloignait**
+ * la cible — pour un long, un take-profit ne pouvait que fuir devant le prix.
+ *
+ * `FIXED` est le défaut, et décrit ce que produit l'app aujourd'hui.
+ */
+export type FollowMode =
+  /**
+   * Calculée une fois, à l'ouverture de la position, puis immobile.
+   *
+   * L'ancre peut être dynamique — un indicateur : c'est sa valeur **au moment
+   * de l'entrée** qui sert, pas la valeur courante. Le prix reste donc
+   * reconstituable à chaque passage, ce qui permet de reposer l'ordre au même
+   * endroit s'il a disparu du carnet ou n'a été exécuté qu'en partie.
+   */
+  | 'FIXED'
+  /** Recalculée à chaque passage, mais ne peut que **se rapprocher** du prix courant. */
+  | 'TIGHTEN_ONLY'
+  /** Recalculée à chaque passage, mais ne peut que **s'éloigner** du prix courant. */
+  | 'WIDEN_ONLY'
+  /** Recalculée à chaque passage, et suit son ancre sans contrainte de sens. */
+  | 'FREE';
+
+export const FOLLOW_MODES = [
+  'FIXED',
+  'TIGHTEN_ONLY',
+  'WIDEN_ONLY',
+  'FREE',
+] as const satisfies readonly FollowMode[];
+
+/** Le mode retenu quand la configuration n'en nomme aucun. */
+export const DEFAULT_FOLLOW_MODE: FollowMode = 'FIXED';
+
 export interface ProtectiveOrderEntry {
   enabled?: boolean;
   tpsl: TpslType;
@@ -109,7 +149,23 @@ export interface ProtectiveOrderEntry {
   condition?: RuleNode;
   atrMultiplier: number;
   sizePercent: number;
-  trailingMode?: boolean;
+  /** Défaut : `FIXED`. Voir `FollowMode`. */
+  followMode?: FollowMode;
+  /**
+   * Interdit à la protection de s'éloigner du prix courant **au-delà de là où
+   * elle était à l'entrée**, quel que soit son mode.
+   *
+   * La borne est un prix absolu : celui que cette protection aurait sous
+   * `FIXED`. Sur un stop-loss, c'est la perte acceptée à l'ouverture, qu'aucun
+   * déplacement ultérieur ne peut alors annuler — c'est le rôle de
+   * `self.stoploss` chez Freqtrade. Sur un take-profit, c'est la cible
+   * d'origine, qui ne peut plus fuir devant le prix.
+   *
+   * Sans objet sous `FIXED` et `TIGHTEN_ONLY`, qui ne peuvent déjà pas
+   * s'éloigner. **Recommandé avec `WIDEN_ONLY` et `FREE`**, les deux seuls
+   * modes qui le permettent.
+   */
+  boundedByEntry?: boolean;
 }
 
 export interface ProtectiveOrderStrategy {

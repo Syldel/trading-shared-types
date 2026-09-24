@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import type { IExchangePair } from '../exchange/exchange-config.interface.js';
+import { FOLLOW_MODES } from '../exchange/exchange-config.interface.js';
 import {
   CATALOG_DEPENDENT_ISSUE_CODES,
   collectExecutableStrategyRulesIssues,
@@ -918,6 +919,101 @@ describe('collectPairIssues', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
     expect(issues[0]!.path).toBe('BTC.strategy.protective.entries[0].anchor');
+  });
+
+  describe('le mode de suivi d\'une protection', () => {
+    const protectiveWith = (extra: Record<string, unknown>) =>
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        protective: {
+          enabled: true,
+          entries: [
+            {
+              tpsl: 'sl',
+              anchor: { source: 'ENTRY' },
+              atrMultiplier: 1,
+              sizePercent: 100,
+              ...extra,
+            },
+          ],
+        },
+      });
+
+    it.each(FOLLOW_MODES)('accepts %s', (mode) => {
+      expect(collectPairIssues(protectiveWith({ followMode: mode }))).toEqual(
+        [],
+      );
+    });
+
+    it('accepts an entry that names no mode at all', () => {
+      // L'absence vaut FIXED, et c'est ce que l'app produit aujourd'hui : la
+      // refuser couperait le trading de toutes les paires existantes.
+      expect(collectPairIssues(protectiveWith({}))).toEqual([]);
+    });
+
+    it('refuses an unknown mode rather than falling back on the default', () => {
+      // Retomber sur FIXED poserait un stop immobile la ou la configuration en
+      // demandait un qui suit, et personne ne l'apprendrait.
+      const issues = collectPairIssues(
+        protectiveWith({ followMode: 'TRAILING' }),
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('UNKNOWN_FOLLOW_MODE');
+      expect(issues[0]!.path).toBe(
+        'BTC.strategy.protective.entries[0].followMode',
+      );
+      expect(issues[0]!.allowed).toEqual(FOLLOW_MODES);
+    });
+
+    it('refuses a residual trailingMode, and says how to translate it', () => {
+      const issues = collectPairIssues(
+        protectiveWith({ trailingMode: true }),
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('RETIRED_TRAILING_MODE');
+      expect(issues[0]!.message).toContain('TIGHTEN_ONLY');
+      expect(issues[0]!.message).toContain('FIXED');
+    });
+
+    it('refuses trailingMode even set to false', () => {
+      // Le champ lui-meme est le probleme : sa presence dit que la
+      // configuration vient d'avant le remplacement, et son intention doit etre
+      // traduite a la main plutot que devinee.
+      const issues = collectPairIssues(
+        protectiveWith({ trailingMode: false }),
+      );
+
+      expect(issues.map((i) => i.code)).toEqual(['RETIRED_TRAILING_MODE']);
+    });
+
+    it('leaves latent entries alone', () => {
+      // `followMode` n'appartient qu'aux protections : un ordre latent n'est pas
+      // encore une position, il n'a rien a resserrer.
+      const issues = collectPairIssues(
+        pairWith({
+          name: 'Advanced',
+          shortname: 'advanced-rules',
+          latent: {
+            enabled: true,
+            entries: [
+              {
+                side: 'LONG',
+                orderType: 'limit',
+                anchor: { source: 'MARKET' },
+                atrMultiplier: 1,
+                sizePercent: 100,
+                trailingMode: true,
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(issues).toEqual([]);
+    });
   });
 
   it('ignores non-indicator anchors', () => {

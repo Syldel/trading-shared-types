@@ -2,7 +2,9 @@ import type {
   IExchangePair,
   IExchangeStrategy,
   IOrderAnchor,
+  ProtectiveOrderEntry,
 } from '../exchange/exchange-config.interface.js';
+import { FOLLOW_MODES } from '../exchange/exchange-config.interface.js';
 import {
   validateIndicatorOperand,
   type IndicatorOperandIssueCode,
@@ -74,7 +76,9 @@ export type StrategyStructureIssueCode =
   | 'INVALID_CONSTANT_VALUE'
   | 'EMPTY_STRATEGY_RULES'
   | 'INVALID_EXPRESSION_ID'
-  | 'DUPLICATE_EXPRESSION_KEY';
+  | 'DUPLICATE_EXPRESSION_KEY'
+  | 'UNKNOWN_FOLLOW_MODE'
+  | 'RETIRED_TRAILING_MODE';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -778,6 +782,56 @@ export function collectExpressionIssues(
 }
 
 /**
+ * Valide le mode de suivi d'une protection.
+ *
+ * Deux refus, tous deux **fail-closed** — la paire est écartée du trading
+ * plutôt que tradée sur une intention qu'on n'a pas comprise :
+ *
+ * - un `followMode` inconnu. Retomber sur `FIXED` poserait un stop immobile là
+ *   où la configuration en demandait un qui suit, sans rien dire ;
+ * - un `trailingMode` **résiduel**, le booléen que `followMode` remplace. Rien
+ *   ne l'écrivait au moment du remplacement (2026-09-24), donc aucune migration
+ *   silencieuse n'est justifiable : une configuration qui en porte un vient
+ *   d'ailleurs, et son intention doit être traduite à la main.
+ */
+function collectProtectiveEntryIssues(
+  entry: ProtectiveOrderEntry | undefined | null,
+  path: string,
+): StrategyValidationIssue[] {
+  if (!entry) return [];
+
+  const issues: StrategyValidationIssue[] = [];
+
+  const mode = entry.followMode;
+  if (mode !== undefined && !FOLLOW_MODES.includes(mode)) {
+    issues.push({
+      path: `${path}.followMode`,
+      code: 'UNKNOWN_FOLLOW_MODE',
+      message:
+        `Unknown followMode "${String(mode)}" at ${path}. ` +
+        `Expected one of: ${FOLLOW_MODES.join(', ')}.`,
+      allowed: FOLLOW_MODES,
+    });
+  }
+
+  if ('trailingMode' in entry) {
+    issues.push({
+      path: `${path}.trailingMode`,
+      code: 'RETIRED_TRAILING_MODE',
+      message:
+        `"trailingMode" was replaced by "followMode" at ${path}. ` +
+        `Its ratchet was read in the trade's direction, which tightened a stop ` +
+        `but pushed a take-profit away. Translate it explicitly: ` +
+        `trailingMode true becomes followMode "TIGHTEN_ONLY", ` +
+        `trailingMode false or absent becomes followMode "FIXED".`,
+      allowed: FOLLOW_MODES,
+    });
+  }
+
+  return issues;
+}
+
+/**
  * Valide l'intégralité d'une stratégie de paire : arbres de règles, ancres et
  * conditions des ordres latents et protecteurs.
  *
@@ -814,6 +868,14 @@ export function collectStrategyIssues(
       if (entry?.condition) {
         issues.push(
           ...collectRuleTreeIssues(entry.condition, `${entryPath}.condition`),
+        );
+      }
+      if (group.key === 'protective') {
+        issues.push(
+          ...collectProtectiveEntryIssues(
+            entry as ProtectiveOrderEntry,
+            entryPath,
+          ),
         );
       }
     });
