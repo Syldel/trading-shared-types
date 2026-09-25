@@ -1,6 +1,7 @@
 export * from './analysis/analysis-candle.type.js';
 export * from './analysis/analysis.type.js';
 export * from './exchange/exchange-config.interface.js';
+export * from './exchange/protection-advice.js';
 export * from './exchange/exchange-meta.type.js';
 export * from './exchange/indicator-meta.type.js';
 export * from './indicators/indicator-request.types.js';
