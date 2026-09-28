@@ -1,10 +1,10 @@
 import type { ChartInterval } from '../chart.type.js';
 import type {
+  Operand,
   RuleNode,
   StrategyRules,
   StrategySettings,
 } from '../strategies/strategy-engine.type.js';
-import type { IndicatorOperand } from '../indicators/indicator-request.types.js';
 
 export type ExitBehavior = 'STRATEGY_SIGNAL' | 'EXIT_ON_PROFIT_ONLY' | 'NEVER';
 
@@ -57,27 +57,85 @@ export type IExchangePair = {
 export type OrderExecutionType = 'limit' | 'trigger_market' | 'trigger_limit';
 
 /** Price origin reference used as the base for order anchoring offsets. */
-export type AnchorSource = 'MARKET' | 'ENTRY' | 'INDICATOR';
+export type AnchorSource = 'MARKET' | 'ENTRY' | 'EXPRESSION';
 
 /**
- * Dynamic structure defining the geometric price alignment of a trade order.
+ * ============================================================================
+ * 📍 OÙ SE POSE UN ORDRE
  *
- * The `INDICATOR` branch reuses `IndicatorOperand` — the exact same type
- * family already enforced for rule-builder operands (see `Operand` in
- * `strategy-engine.type.ts`). This is deliberate: a stop loss / take profit
- * anchor carries the same risk of designating an ambiguous value (e.g. `adx`
- * without a line) as a signal condition does, so it gets the same
- * compile-time guarantee — `subField` mandatory on multi-output indicators,
- * `parameters` no longer an untyped bag but the indicator's exact fields.
+ * Deux origines que rien ne peut exprimer autrement, et une expression pour
+ * tout le reste :
  *
- * `MARKET` and `ENTRY` anchors carry no indicator data.
+ * - `ENTRY` — le prix d'entrée de la position. Le rule-builder n'a pas
+ *   d'opérande pour ça : il ne connaît que des bougies ;
+ * - `MARKET` — le dernier prix échangé, bougie en cours comprise. Distinct de
+ *   `price.close`, qui est la dernière bougie **close** ;
+ * - `EXPRESSION` — n'importe quel `Operand` du rule-builder, évalué sur la
+ *   fenêtre du passage. Un indicateur seul (`bb.lower`), une composition
+ *   (`max(spanA, spanB)`), une formule (`bb.lower − 1,5 × ATR(21)`), un
+ *   décalage en bougies (`offset`), voire une constante.
+ *
+ * `EXPRESSION` remplace l'ancien `INDICATOR`, qui n'était qu'un
+ * `IndicatorOperand` déguisé : garder les deux, c'était deux façons d'écrire la
+ * même chose, que l'app aurait dû départager et que le bot aurait dû résoudre
+ * deux fois. La validation refuse explicitement l'ancienne forme plutôt que de
+ * la traduire en silence — voir `RETIRED_INDICATOR_ANCHOR`.
+ *
+ * La garantie de type qui motivait la branche `INDICATOR` est conservée, et
+ * elle est même plus large : `Operand` impose déjà `subField` sur un
+ * indicateur multi-lignes et le type exact de chaque paramètre. C'est la même
+ * validation que pour une condition de règle, et c'est voulu — une ancre
+ * ambiguë ferait un prix faux exactement comme une condition ambiguë fait un
+ * signal faux.
+ * ============================================================================
  */
-export type IOrderAnchor =
-  | { source: 'MARKET' | 'ENTRY' }
-  | IIndicatorOrderAnchor;
+export type PriceAnchor = { source: 'MARKET' | 'ENTRY' } | ExpressionAnchor;
 
-/** The `INDICATOR` branch of `IOrderAnchor`, isolated for call sites that already narrowed on `source`. */
-export type IIndicatorOrderAnchor = { source: 'INDICATOR' } & IndicatorOperand;
+/**
+ * Miroir runtime d'`AnchorSource`, dans le même esprit que `FOLLOW_MODES` :
+ * la validation a besoin de la liste pour dire ce qu'elle attendait.
+ */
+export const ANCHOR_SOURCES = [
+  'MARKET',
+  'ENTRY',
+  'EXPRESSION',
+] as const satisfies readonly AnchorSource[];
+
+/** La branche `EXPRESSION`, isolée pour les appelants qui ont déjà discriminé sur `source`. */
+export type ExpressionAnchor = { source: 'EXPRESSION'; expression: Operand };
+
+export const DISTANCE_UNITS = ['ATR', 'PERCENT'] as const;
+export type DistanceUnit = (typeof DISTANCE_UNITS)[number];
+
+/**
+ * ============================================================================
+ * 📏 À QUELLE DISTANCE DE L'ANCRE
+ *
+ * Le sens n'est pas porté ici : il découle du côté et de la position
+ * (`isAbove` dans `protective-plan.ts`). Une distance est toujours **positive**
+ * et **éloigne** du prix courant.
+ *
+ * - `ATR` — `value × ATR`. C'est l'unique unité qui existait, sous le nom
+ *   `atrMultiplier`. ⚠️ La période de l'ATR n'est pas configurable : le bot
+ *   calcule un seul ATR(14) par passage. Ouvrir la période demanderait d'en
+ *   transporter plusieurs, y compris dans le contexte d'entrée ; un `period?`
+ *   optionnel s'ajoutera sans rien casser le jour où le besoin se montre. En
+ *   attendant, une autre période s'écrit dans l'**ancre** :
+ *   `bb.lower − 1,5 × ATR(21)` est une expression parfaitement valide ;
+ * - `PERCENT` — `value %` **du prix de l'ancre**, et non du prix d'entrée. Les
+ *   deux coïncident seulement quand l'ancre est `ENTRY`. C'est l'unité du stop
+ *   par défaut de Freqtrade (`stoploss = -0.10`), que le modèle précédent ne
+ *   savait pas exprimer du tout.
+ *
+ * Un seul champ `value` plutôt qu'un nom par unité : le formulaire se réduit à
+ * un nombre et un sélecteur, et lire la valeur n'oblige pas à discriminer.
+ * ============================================================================
+ */
+export interface PriceDistance {
+  unit: DistanceUnit;
+  /** Toujours positive. Voir l'unité pour ce qu'elle multiplie. */
+  value: number;
+}
 
 // ─── LATENT ORDERS (HORS POSITION) ───────────────────────────────────────────
 
@@ -86,9 +144,9 @@ export interface LatentOrderEntry {
   enabled?: boolean;
   side: 'LONG' | 'SHORT';
   orderType: OrderExecutionType;
-  anchor: IOrderAnchor;
+  anchor: PriceAnchor;
   condition?: RuleNode;
-  atrMultiplier: number;
+  distance: PriceDistance;
   sizePercent: number;
 }
 
@@ -145,9 +203,9 @@ export const DEFAULT_FOLLOW_MODE: FollowMode = 'FIXED';
 export interface ProtectiveOrderEntry {
   enabled?: boolean;
   tpsl: TpslType;
-  anchor: IOrderAnchor;
+  anchor: PriceAnchor;
   condition?: RuleNode;
-  atrMultiplier: number;
+  distance: PriceDistance;
   sizePercent: number;
   /** Défaut : `FIXED`. Voir `FollowMode`. */
   followMode?: FollowMode;

@@ -5,7 +5,7 @@ import {
 } from './protection-advice.js';
 import {
   FOLLOW_MODES,
-  type IOrderAnchor,
+  type PriceAnchor,
   type ProtectiveOrderEntry,
   type TpslType,
 } from './exchange-config.interface.js';
@@ -22,24 +22,27 @@ import {
  * ============================================================================
  */
 
-const SOURCES = ['ENTRY', 'MARKET', 'INDICATOR'] as const;
+const SOURCES = ['ENTRY', 'MARKET', 'EXPRESSION'] as const;
 const SIDES: TpslType[] = ['sl', 'tp'];
 
 /**
- * Une ancre **valide** pour chaque source. Une ancre `INDICATOR` réclame son
- * indicateur : la fabriquer correctement plutôt que de la caster, c'est laisser
+ * Une ancre **valide** pour chaque source. Une ancre `EXPRESSION` réclame son
+ * opérande : la fabriquer correctement plutôt que de la caster, c'est laisser
  * le compilateur vérifier que le banc dit la vérité.
  */
-const anchorOf = (source: (typeof SOURCES)[number]): IOrderAnchor =>
-  source === 'INDICATOR'
-    ? { source: 'INDICATOR', name: 'hma', period: 3 }
+const anchorOf = (source: (typeof SOURCES)[number]): PriceAnchor =>
+  source === 'EXPRESSION'
+    ? {
+        source: 'EXPRESSION',
+        expression: { type: 'indicator', name: 'hma', period: 3 },
+      }
     : { source };
 
 const entry = (over: Partial<ProtectiveOrderEntry> = {}): ProtectiveOrderEntry =>
   ({
     tpsl: 'sl',
     anchor: { source: 'ENTRY' },
-    atrMultiplier: 1,
+    distance: { unit: 'ATR', value: 1 },
     sizePercent: 100,
     ...over,
   }) as ProtectiveOrderEntry;
@@ -103,7 +106,7 @@ describe('adviseProtection', () => {
       'FIXED_ON_LIVE_ANCHOR',
       'FIXED_ON_ENTRY',
       'TARGET_ONLY_CLOSER',
-      'TARGET_RUNS_WITH_INDICATOR',
+      'TARGET_RUNS_WITH_ANCHOR',
       'TARGET_WIDENS_WITH_VOLATILITY',
       'TARGET_FREE_BOUNDED',
       'TARGET_FREE',
@@ -255,7 +258,7 @@ describe('adviseProtection', () => {
 
     it('recognises a fixed protection frozen on a live anchor', () => {
       // Ce que `FIXED` rend possible, et qui merite sa propre phrase.
-      for (const source of ['MARKET', 'INDICATOR'] as const) {
+      for (const source of ['MARKET', 'EXPRESSION'] as const) {
         const advice = adviseProtection(
           entry({ anchor: anchorOf(source), followMode: 'FIXED' }),
         )!;
@@ -267,11 +270,11 @@ describe('adviseProtection', () => {
   });
 
   describe('les cibles', () => {
-    it('tells the indicator-anchored runner from the entry-anchored one', () => {
+    it('tells the expression-anchored runner from the entry-anchored one', () => {
       const runner = adviseProtection(
         entry({
           tpsl: 'tp',
-          anchor: anchorOf('INDICATOR'),
+          anchor: anchorOf('EXPRESSION'),
           followMode: 'WIDEN_ONLY',
         }),
       )!;
@@ -279,7 +282,7 @@ describe('adviseProtection', () => {
         entry({ tpsl: 'tp', followMode: 'WIDEN_ONLY' }),
       )!;
 
-      expect(runner.code).toBe('TARGET_RUNS_WITH_INDICATOR');
+      expect(runner.code).toBe('TARGET_RUNS_WITH_ANCHOR');
       expect(runner.message).toContain('lags the price');
 
       expect(widening.code).toBe('TARGET_WIDENS_WITH_VOLATILITY');

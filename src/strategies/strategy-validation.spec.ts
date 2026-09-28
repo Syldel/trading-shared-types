@@ -907,8 +907,11 @@ describe('collectPairIssues', () => {
           entries: [
             {
               tpsl: 'sl',
-              anchor: { source: 'INDICATOR', name: 'keltner' },
-              atrMultiplier: 1,
+              anchor: {
+                source: 'EXPRESSION',
+                expression: { type: 'indicator', name: 'keltner' },
+              },
+              distance: { unit: 'ATR', value: 1 },
               sizePercent: 100,
             },
           ],
@@ -918,7 +921,9 @@ describe('collectPairIssues', () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
-    expect(issues[0]!.path).toBe('BTC.strategy.protective.entries[0].anchor');
+    expect(issues[0]!.path).toBe(
+      'BTC.strategy.protective.entries[0].anchor.expression',
+    );
   });
 
   describe('le mode de suivi d\'une protection', () => {
@@ -932,7 +937,7 @@ describe('collectPairIssues', () => {
             {
               tpsl: 'sl',
               anchor: { source: 'ENTRY' },
-              atrMultiplier: 1,
+              distance: { unit: 'ATR', value: 1 },
               sizePercent: 100,
               ...extra,
             },
@@ -1003,7 +1008,7 @@ describe('collectPairIssues', () => {
                 side: 'LONG',
                 orderType: 'limit',
                 anchor: { source: 'MARKET' },
-                atrMultiplier: 1,
+                distance: { unit: 'ATR', value: 1 },
                 sizePercent: 100,
                 trailingMode: true,
               },
@@ -1028,7 +1033,7 @@ describe('collectPairIssues', () => {
               side: 'LONG',
               orderType: 'limit',
               anchor: { source: 'MARKET' },
-              atrMultiplier: 1,
+              distance: { unit: 'ATR', value: 1 },
               sizePercent: 100,
             },
           ],
@@ -1113,6 +1118,277 @@ describe('collectPairIssues', () => {
     expect(issues).toEqual([]);
   });
 
+  describe("où se pose un ordre, et à quelle distance", () => {
+    const protectiveWith = (entry: Record<string, unknown>) =>
+      pairWith({
+        name: 'Advanced',
+        shortname: 'advanced-rules',
+        protective: { enabled: true, entries: [entry] },
+      });
+
+    const SOUND = {
+      tpsl: 'sl',
+      anchor: { source: 'ENTRY' },
+      distance: { unit: 'ATR', value: 1.5 },
+      sizePercent: 100,
+    };
+
+    const codesOf = (pair: ReturnType<typeof protectiveWith>) =>
+      collectPairIssues(pair).map((issue) => issue.code);
+
+    // Le cas qui a motivé tout le contrat : la bande basse de Bollinger, moins
+    // un multiple d'un ATR dont la période n'est pas celle du bot. Une seule
+    // expression, et rien d'autre à inventer.
+    it('accepts the case the contract was made for: bb.lower minus 1.5 x ATR(21)', () => {
+      const issues = collectPairIssues(
+        protectiveWith({
+          ...SOUND,
+          anchor: {
+            source: 'EXPRESSION',
+            expression: {
+              type: 'arith',
+              operator: 'SUB',
+              left: {
+                type: 'indicator',
+                name: 'bb',
+                subField: 'lower',
+                period: 20,
+                stdDev: 2,
+              },
+              right: {
+                type: 'arith',
+                operator: 'MUL',
+                left: { type: 'number', value: 1.5 },
+                right: { type: 'indicator', name: 'atr', period: 21 },
+              },
+            },
+          },
+          distance: { unit: 'ATR', value: 0.5 },
+        }),
+      );
+
+      expect(issues).toEqual([]);
+    });
+
+    it('accepts a composed anchor: the top of the Ichimoku cloud', () => {
+      expect(
+        codesOf(
+          protectiveWith({
+            ...SOUND,
+            anchor: {
+              source: 'EXPRESSION',
+              expression: {
+                type: 'fn',
+                kind: 'max',
+                args: [
+                  { type: 'indicator', name: 'ichimoku', subField: 'spanA' },
+                  { type: 'indicator', name: 'ichimoku', subField: 'spanB' },
+                ],
+              },
+            },
+          }),
+        ),
+      ).toEqual([]);
+    });
+
+    it('validates every leaf of the expression, not just its shape', () => {
+      // `adx` sans ligne : la meme ambiguite qu'en condition de regle, refusee
+      // au meme titre. Le chemin dit ou chercher, feuille comprise.
+      const issues = collectPairIssues(
+        protectiveWith({
+          ...SOUND,
+          anchor: {
+            source: 'EXPRESSION',
+            expression: {
+              type: 'arith',
+              operator: 'ADD',
+              left: { type: 'indicator', name: 'adx' },
+              right: { type: 'number', value: 1 },
+            },
+          },
+        }),
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
+      expect(issues[0]!.path).toBe(
+        'BTC.strategy.protective.entries[0].anchor.expression.left',
+      );
+    });
+
+    it('refuses a retired INDICATOR anchor, and says how to translate it', () => {
+      const issues = collectPairIssues(
+        protectiveWith({
+          ...SOUND,
+          anchor: { source: 'INDICATOR', name: 'bb', subField: 'lower' },
+        }),
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('RETIRED_INDICATOR_ANCHOR');
+      expect(issues[0]!.message).toContain('source: "EXPRESSION"');
+    });
+
+    it('refuses an anchor that is missing rather than assuming the entry', () => {
+      const withoutAnchor = { ...SOUND };
+      delete (withoutAnchor as Partial<typeof SOUND>).anchor;
+
+      expect(codesOf(protectiveWith(withoutAnchor))).toEqual(['MISSING_ANCHOR']);
+    });
+
+    it('refuses an anchor source it does not know', () => {
+      expect(
+        codesOf(protectiveWith({ ...SOUND, anchor: { source: 'ORACLE' } })),
+      ).toEqual(['UNKNOWN_ANCHOR_SOURCE']);
+    });
+
+    it('accepts a percentage distance, the stop Freqtrade defaults to', () => {
+      expect(
+        codesOf(
+          protectiveWith({ ...SOUND, distance: { unit: 'PERCENT', value: 10 } }),
+        ),
+      ).toEqual([]);
+    });
+
+    it('refuses a distance that is missing', () => {
+      const withoutDistance = { ...SOUND };
+      delete (withoutDistance as Partial<typeof SOUND>).distance;
+
+      expect(codesOf(protectiveWith(withoutDistance))).toEqual([
+        'MISSING_DISTANCE',
+      ]);
+    });
+
+    it('refuses a unit it cannot compute', () => {
+      expect(
+        codesOf(
+          protectiveWith({ ...SOUND, distance: { unit: 'TICKS', value: 3 } }),
+        ),
+      ).toEqual(['UNKNOWN_DISTANCE_UNIT']);
+    });
+
+    // Une distance ne porte jamais de signe : le cote de l'ordre decide du sens.
+    // Zero non plus, qui demanderait une protection posee sur son ancre exacte.
+    it.each([0, -1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+      'refuses the distance value %p',
+      (value) => {
+        expect(
+          codesOf(protectiveWith({ ...SOUND, distance: { unit: 'ATR', value } })),
+        ).toEqual(['INVALID_DISTANCE_VALUE']);
+      },
+    );
+
+    it('refuses a distance value that arrived as a string', () => {
+      expect(
+        codesOf(
+          protectiveWith({ ...SOUND, distance: { unit: 'ATR', value: '1.5' } }),
+        ),
+      ).toEqual(['INVALID_DISTANCE_VALUE']);
+    });
+
+    it('refuses a residual atrMultiplier, and says how to translate it', () => {
+      const issues = collectPairIssues(
+        protectiveWith({ ...SOUND, atrMultiplier: 1.5 }),
+      );
+
+      expect(issues).toHaveLength(1);
+      expect(issues[0]!.code).toBe('RETIRED_ATR_MULTIPLIER');
+      expect(issues[0]!.message).toContain('unit: "ATR", value: 1.5');
+    });
+
+    // La casse n'est pas rattrapee, et c'est voulu : accepter 'atr' ici
+    // obligerait chaque lecteur a normaliser de son cote, ou a oublier de le
+    // faire. C'est l'erreur de saisie la plus probable des deux.
+    it('refuses a unit that is only a casing away from a real one', () => {
+      expect(
+        codesOf(
+          protectiveWith({ ...SOUND, distance: { unit: 'atr', value: 1 } }),
+        ),
+      ).toEqual(['UNKNOWN_DISTANCE_UNIT']);
+    });
+
+    it('refuses a source that is only a casing away from a real one', () => {
+      expect(
+        codesOf(protectiveWith({ ...SOUND, anchor: { source: 'Entry' } })),
+      ).toEqual(['UNKNOWN_ANCHOR_SOURCE']);
+    });
+
+    // Une chaine numerique est le defaut que `ion-input type="number"` a deja
+    // produit deux fois dans l'app. Elle se coerce sans broncher, donc seul un
+    // `typeof` la voit : c'est ce test qui tient ce `typeof` en place.
+    it('refuses a percentage that arrived as a numeric string', () => {
+      expect(
+        codesOf(
+          protectiveWith({
+            ...SOUND,
+            distance: { unit: 'PERCENT', value: '10' },
+          }),
+        ),
+      ).toEqual(['INVALID_DISTANCE_VALUE']);
+    });
+
+    // Le champ existe, il est vide : ce que rend un formulaire qu'on n'a pas
+    // rempli, et ce qui traverserait un `typeof` mal place.
+    it('refuses a distance whose value was never filled in', () => {
+      expect(
+        codesOf(
+          protectiveWith({
+            ...SOUND,
+            distance: { unit: 'ATR', value: undefined },
+          }),
+        ),
+      ).toEqual(['INVALID_DISTANCE_VALUE']);
+    });
+
+    // Les deux familles d'entrees portent le meme couple, donc les memes refus.
+    it('refuses a latent entry that names neither anchor nor distance', () => {
+      const issues = collectPairIssues(
+        pairWith({
+          name: 'Advanced',
+          shortname: 'advanced-rules',
+          latent: {
+            enabled: true,
+            entries: [
+              { side: 'LONG', orderType: 'limit', sizePercent: 100 },
+            ],
+          },
+        }),
+      );
+
+      expect(issues.map((issue) => issue.code).sort()).toEqual([
+        'MISSING_ANCHOR',
+        'MISSING_DISTANCE',
+      ]);
+    });
+
+    it('holds latent entries to the very same contract', () => {
+      const issues = collectPairIssues(
+        pairWith({
+          name: 'Advanced',
+          shortname: 'advanced-rules',
+          latent: {
+            enabled: true,
+            entries: [
+              {
+                side: 'LONG',
+                orderType: 'limit',
+                anchor: { source: 'INDICATOR', name: 'ema' },
+                atrMultiplier: 2,
+                sizePercent: 100,
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(issues.map((issue) => issue.code).sort()).toEqual([
+        'MISSING_DISTANCE',
+        'RETIRED_ATR_MULTIPLIER',
+        'RETIRED_INDICATOR_ANCHOR',
+      ]);
+    });
+  });
+
   it('tolerates a latent/protective entry without a condition (always applies)', () => {
     const issues = collectPairIssues(
       pairWith({
@@ -1125,7 +1401,7 @@ describe('collectPairIssues', () => {
               side: 'LONG',
               orderType: 'limit',
               anchor: { source: 'MARKET' },
-              atrMultiplier: 1,
+              distance: { unit: 'ATR', value: 1 },
               sizePercent: 100,
               // condition absente
             },

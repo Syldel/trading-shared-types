@@ -1,5 +1,5 @@
 import type { ChartInterval } from "../chart.type";
-import type { AnchorSource, ExitBehavior, OrderExecutionType, TpslType } from "./exchange-config.interface";
+import type { AnchorSource, DistanceUnit, ExitBehavior, OrderExecutionType, TpslType } from "./exchange-config.interface";
 import type { LogicalGroup } from "../strategies/strategy-engine.type";
 import type { FunctionMetadata } from "../strategies/function-registry";
 import type { RuleBuilderGrammar } from "../strategies/rule-builder-grammar";
@@ -69,6 +69,21 @@ export interface AnchorSourceMeta {
   allowedContexts: ('latent' | 'protective')[];
 }
 
+/**
+ * Les unités de distance servies au formulaire.
+ *
+ * Servies, et non déduites du paquet compilé : c'est la même règle que pour
+ * `anchorSources` et le catalogue d'indicateurs. Un client qui dériverait la
+ * liste de sa propre copie de `DISTANCE_UNITS` pourrait proposer une unité
+ * qu'un bot plus ancien ne sait pas calculer.
+ */
+export interface DistanceUnitMeta {
+  value: DistanceUnit;
+  label: string;
+  /** Ce que `value` multiplie, en une phrase destinée à l'utilisateur. */
+  description: string;
+}
+
 export interface OrderTypeMeta {
   value: OrderExecutionType;
   label: string;
@@ -87,6 +102,7 @@ export interface PositionSideMeta {
 
 export interface StrategyFormSchema {
   anchorSources: AnchorSourceMeta[];
+  distanceUnits: DistanceUnitMeta[];
   orderTypes: OrderTypeMeta[];
   tpslTypes: TpslTypeMeta[];
   positionSides: PositionSideMeta[];

@@ -1,10 +1,16 @@
 import type {
+  ExpressionAnchor,
   IExchangePair,
   IExchangeStrategy,
-  IOrderAnchor,
+  PriceAnchor,
+  PriceDistance,
   ProtectiveOrderEntry,
 } from '../exchange/exchange-config.interface.js';
-import { FOLLOW_MODES } from '../exchange/exchange-config.interface.js';
+import {
+  ANCHOR_SOURCES,
+  DISTANCE_UNITS,
+  FOLLOW_MODES,
+} from '../exchange/exchange-config.interface.js';
 import {
   validateIndicatorOperand,
   type IndicatorOperandIssueCode,
@@ -78,7 +84,14 @@ export type StrategyStructureIssueCode =
   | 'INVALID_EXPRESSION_ID'
   | 'DUPLICATE_EXPRESSION_KEY'
   | 'UNKNOWN_FOLLOW_MODE'
-  | 'RETIRED_TRAILING_MODE';
+  | 'RETIRED_TRAILING_MODE'
+  | 'MISSING_ANCHOR'
+  | 'UNKNOWN_ANCHOR_SOURCE'
+  | 'RETIRED_INDICATOR_ANCHOR'
+  | 'MISSING_DISTANCE'
+  | 'UNKNOWN_DISTANCE_UNIT'
+  | 'INVALID_DISTANCE_VALUE'
+  | 'RETIRED_ATR_MULTIPLIER';
 
 /** Anomalie de nœud ou d'opérande, située dans la structure de la stratégie. */
 export interface StrategyValidationIssue {
@@ -625,22 +638,143 @@ export function collectRuleTreeIssues(
 
 /** Valide une ancre d'ordre : seules les ancres `INDICATOR` sont concernées. */
 export function collectAnchorIssues(
-  anchor: IOrderAnchor | undefined,
+  anchor: PriceAnchor | undefined,
   path: string,
 ): StrategyValidationIssue[] {
-  if (!anchor || anchor.source !== 'INDICATOR') return [];
+  if (!anchor) {
+    return [
+      {
+        path,
+        code: 'MISSING_ANCHOR',
+        message:
+          `Missing anchor at ${path}. An order has to say where it sits: ` +
+          `${ANCHOR_SOURCES.join(', ')}.`,
+        allowed: ANCHOR_SOURCES,
+      },
+    ];
+  }
 
-  // L'ancre entière, et non `{ name, subField }` : ses paramètres sont portés
-  // à plat (`IIndicatorOrderAnchor` est un `IndicatorOperand`), et les
-  // réduire ici les soustrairait au contrôle de type de
-  // `INVALID_INDICATOR_PARAM`. Les clés qui ne sont pas des paramètres
-  // déclarés (`source`, `type`) sont ignorées par la validation.
-  const issue = validateIndicatorOperand({
-    ...anchor,
-    name: anchor.name.toLowerCase(),
-  });
+  const source = (anchor as { source?: unknown }).source;
 
-  return issue ? [{ ...issue, path }] : [];
+  // Refusé, pas traduit. Une ancre `INDICATOR` était un `IndicatorOperand`
+  // porté à plat ; la même chose s'écrit désormais comme une expression, et la
+  // deviner ici ferait exactement le repli silencieux que ce dépôt proscrit.
+  if (source === 'INDICATOR') {
+    return [
+      {
+        path,
+        code: 'RETIRED_INDICATOR_ANCHOR',
+        message:
+          `"INDICATOR" anchors were replaced by expressions at ${path}. ` +
+          `An indicator is one operand among others, and keeping both was two ` +
+          `ways of writing the same thing. Translate it explicitly: ` +
+          `{ source: "INDICATOR", name: "bb", subField: "lower" } becomes ` +
+          `{ source: "EXPRESSION", expression: { type: "indicator", name: "bb", subField: "lower" } }.`,
+        allowed: ANCHOR_SOURCES,
+      },
+    ];
+  }
+
+  if (source === 'ENTRY' || source === 'MARKET') return [];
+
+  if (source !== 'EXPRESSION') {
+    return [
+      {
+        path,
+        code: 'UNKNOWN_ANCHOR_SOURCE',
+        message:
+          `Unknown anchor source "${String(source)}" at ${path}. ` +
+          `Expected one of: ${ANCHOR_SOURCES.join(', ')}.`,
+        allowed: ANCHOR_SOURCES,
+      },
+    ];
+  }
+
+  // Exactement la validation d'un opérande de règle : une ancre ambiguë ferait
+  // un prix faux comme une condition ambiguë fait un signal faux.
+  return collectOperandStructureIssues(
+    (anchor as ExpressionAnchor).expression,
+    `${path}.expression`,
+  );
+}
+
+/**
+ * La distance qui sépare l'ordre de son ancre.
+ *
+ * Toujours positive : le sens ne se configure pas, il découle du côté et de la
+ * position. Une valeur négative demanderait un ordre **du mauvais côté** de son
+ * ancre, ce qu'aucun appelant ne sait interpréter.
+ */
+export function collectDistanceIssues(
+  distance: PriceDistance | undefined,
+  path: string,
+): StrategyValidationIssue[] {
+  if (!distance) {
+    return [
+      {
+        path,
+        code: 'MISSING_DISTANCE',
+        message:
+          `Missing distance at ${path}. An order has to say how far from its ` +
+          `anchor it sits: ${DISTANCE_UNITS.join(', ')}.`,
+        allowed: DISTANCE_UNITS,
+      },
+    ];
+  }
+
+  const issues: StrategyValidationIssue[] = [];
+  const { unit, value } = distance as { unit?: unknown; value?: unknown };
+
+  if (!(DISTANCE_UNITS as readonly string[]).includes(unit as string)) {
+    issues.push({
+      path: `${path}.unit`,
+      code: 'UNKNOWN_DISTANCE_UNIT',
+      message:
+        `Unknown distance unit "${String(unit)}" at ${path}.unit. ` +
+        `Expected one of: ${DISTANCE_UNITS.join(', ')}.`,
+      allowed: DISTANCE_UNITS,
+    });
+  }
+
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    issues.push({
+      path: `${path}.value`,
+      code: 'INVALID_DISTANCE_VALUE',
+      message:
+        `Distance value at ${path}.value must be a finite number above zero ` +
+        `(received: ${String(value)}). A distance never carries a sign: the ` +
+        `side of the order decides which way it goes.`,
+    });
+  }
+
+  return issues;
+}
+
+/**
+ * Les champs qu'une entrée ne doit plus porter, latente comme protectrice.
+ *
+ * Même raison que `RETIRED_TRAILING_MODE` : un champ abandonné se refuse
+ * bruyamment, il ne se lit pas « au cas où ».
+ */
+function collectRetiredEntryFieldIssues(
+  entry: unknown,
+  path: string,
+): StrategyValidationIssue[] {
+  const record = asRecord(entry);
+  if (!record || !('atrMultiplier' in record)) return [];
+
+  return [
+    {
+      path: `${path}.atrMultiplier`,
+      code: 'RETIRED_ATR_MULTIPLIER',
+      message:
+        `"atrMultiplier" was replaced by "distance" at ${path}. It was the ` +
+        `only unit there was, which left no way to express a percentage stop. ` +
+        `Translate it explicitly: atrMultiplier 1.5 becomes ` +
+        `distance { unit: "ATR", value: 1.5 }.`,
+      allowed: DISTANCE_UNITS,
+    },
+  ];
 }
 
 /**
@@ -865,6 +999,10 @@ export function collectStrategyIssues(
     group.entries.forEach((entry, index) => {
       const entryPath = `${path}.${group.key}.entries[${index}]`;
       issues.push(...collectAnchorIssues(entry?.anchor, `${entryPath}.anchor`));
+      issues.push(
+        ...collectDistanceIssues(entry?.distance, `${entryPath}.distance`),
+      );
+      issues.push(...collectRetiredEntryFieldIssues(entry, entryPath));
       if (entry?.condition) {
         issues.push(
           ...collectRuleTreeIssues(entry.condition, `${entryPath}.condition`),

@@ -1,6 +1,7 @@
 import type {
+  AnchorSource,
   FollowMode,
-  IOrderAnchor,
+  PriceAnchor,
   ProtectiveOrderEntry,
 } from './exchange-config.interface.js';
 import { DEFAULT_FOLLOW_MODE } from './exchange-config.interface.js';
@@ -52,7 +53,7 @@ export type ProtectionAdviceCode =
   | 'FIXED_ON_LIVE_ANCHOR'
   | 'FIXED_ON_ENTRY'
   | 'TARGET_ONLY_CLOSER'
-  | 'TARGET_RUNS_WITH_INDICATOR'
+  | 'TARGET_RUNS_WITH_ANCHOR'
   | 'TARGET_WIDENS_WITH_VOLATILITY'
   | 'TARGET_FREE_BOUNDED'
   | 'TARGET_FREE';
@@ -68,8 +69,19 @@ export interface ProtectionAdvice {
   message: string;
 }
 
-/** L'ancre effective : sans ancre déclarée, le bot retombe sur l'entrée. */
-function anchorSourceOf(anchor: IOrderAnchor | undefined): IOrderAnchor['source'] {
+/**
+ * L'ancre effective : sans ancre déclarée, le bot retombe sur l'entrée.
+ *
+ * ⚠️ Une ancre `EXPRESSION` est traitée comme une valeur **vivante**, ce qui
+ * est vrai de tout ce qu'on écrit en pratique — un indicateur, un prix, une
+ * formule qui en combine. Ça ne l'est pas d'une constante
+ * (`{ type: 'number' }`), qui est une ancre à prix fixe : l'avis lui dira
+ * qu'elle est figée « à ce que l'ancre valait à l'entrée », ce qui est inexact
+ * sans être trompeur sur le comportement. Distinguer les deux demanderait de
+ * parcourir l'expression ; à faire le jour où une ancre constante est
+ * réellement utilisée.
+ */
+function anchorSourceOf(anchor: PriceAnchor | undefined): AnchorSource {
   return anchor?.source ?? 'ENTRY';
 }
 
@@ -83,7 +95,7 @@ type Rule = {
 interface Context {
   isStop: boolean;
   mode: FollowMode;
-  source: IOrderAnchor['source'];
+  source: AnchorSource;
   bounded: boolean;
 }
 
@@ -193,13 +205,13 @@ const RULES: Rule[] = [
       'sooner, never later. Safe, and it keeps the trade reachable.',
   },
   {
-    when: (c) => c.mode === 'WIDEN_ONLY' && c.source === 'INDICATOR',
+    when: (c) => c.mode === 'WIDEN_ONLY' && c.source === 'EXPRESSION',
     level: 'legitimate',
-    code: 'TARGET_RUNS_WITH_INDICATOR',
+    code: 'TARGET_RUNS_WITH_ANCHOR',
     message:
-      'Letting the winner run: the target follows its indicator away from the price and never ' +
-      'comes back. An indicator lags the price, so in a sustained trend the remaining distance ' +
-      'still shrinks and the target stays reachable.',
+      'Letting the winner run: the target follows its anchor away from the price and never ' +
+      'comes back. An anchor computed from closed candles lags the price, so in a sustained ' +
+      'trend the remaining distance still shrinks and the target stays reachable.',
   },
   {
     when: (c) => c.mode === 'WIDEN_ONLY',
