@@ -1,6 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import type { AnalysisCandle } from '../analysis/analysis-candle.type.js';
-import { buildBacktestReport } from './backtest-report.js';
+import {
+  buildBacktestReport,
+  relativeDrawdown,
+} from './backtest-report.js';
 import type { PositionSide, TimelineSignal } from './strategy-engine.type.js';
 
 /**
@@ -202,7 +205,12 @@ describe('buildBacktestReport — open positions and the curve', () => {
     });
 
     expect(report.equity.map((p) => p.long)).toEqual([0, -5, -8, 1]);
-    expect(report.long.maxDrawdown).toEqual({ depthPercent: 8, peakTime: null, troughTime: 3 * H });
+    // Le sommet est le capital intact, donc le dénominateur vaut 1 et la
+    // profondeur coïncide avec l'écart de points : 8 %. `peakTime` désigne la
+    // bougie de ce sommet, et non plus `null` comme avant le 2026-10-08.
+    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(8, 10);
+    expect(report.long.maxDrawdown.peakTime).toBe(H);
+    expect(report.long.maxDrawdown.troughTime).toBe(3 * H);
   });
 
   it('measures a drawdown from the highest peak reached before it', () => {
@@ -212,7 +220,80 @@ describe('buildBacktestReport — open positions and the curve', () => {
       from: H,
     });
 
-    expect(report.long.maxDrawdown).toEqual({ depthPercent: 6, peakTime: 2 * H, troughTime: 3 * H });
+    /**
+     * **Le test qui porte la correction du 2026-10-08.** La courbe monte à +10
+     * points puis retombe à +4 : l'écart est de 6 points, mais le drawdown est
+     * de `6 / 1,10 = 5,4545…` %, puisque le sommet vaut 1,10 fois le capital
+     * initial.
+     *
+     * L'ancienne version rendait `6` — l'écart sans dénominateur, qui n'est pas
+     * un drawdown. C'est précisément ce qu'écarte la documentation Hyperliquid :
+     * « ce n'est pas le drawdown absolu divisé par une valeur de compte ».
+     */
+    expect(report.equity.map((p) => p.long)).toEqual([
+      0,
+      10,
+      4,
+      expect.closeTo(7, 10),
+    ]);
+    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(5.454545, 5);
+    expect(report.long.maxDrawdown.peakTime).toBe(2 * H);
+    expect(report.long.maxDrawdown.troughTime).toBe(3 * H);
+  });
+
+  it('reports the first of two equal peaks', () => {
+    // Révélé par mutation. Sur deux sommets de même valeur, c'est le premier
+    // qui est rapporté : la courbe monte à +10, y reste, puis retombe.
+    const report = buildBacktestReport({
+      signals: [enter('LONG', 1, 100)],
+      candles: candles(100, 110, 110, 105),
+      from: H,
+    });
+
+    expect(report.long.maxDrawdown.peakTime).toBe(2 * H);
+    expect(report.long.maxDrawdown.troughTime).toBe(4 * H);
+  });
+
+  it('names the wiping candle as the peak when ruin comes first', () => {
+    // Révélé par mutation : un sommet initialisé à zéro au lieu de −∞ laisserait
+    // `peakTime` à `null` ici. Le sommet est la bougie d'entrée, même si le
+    // compte est vidé aussitôt.
+    const report = buildBacktestReport({
+      signals: [enter('SHORT', 1, 100)],
+      candles: candles(100, 300),
+      from: H,
+    });
+
+    expect(report.short.maxDrawdown.depthPercent).toBe(100);
+    expect(report.short.maxDrawdown.peakTime).toBe(H);
+  });
+
+  it('stops at the first candle that wipes the account, not at a later one', () => {
+    // Révélé par mutation : `<= 0` et `< 0` donnent la même profondeur, mais pas
+    // le même creux. Un short à 100 vaut exactement zéro à 200, puis négatif à
+    // 300 — c'est le premier moment de la ruine qui compte.
+    const report = buildBacktestReport({
+      signals: [enter('SHORT', 1, 100)],
+      candles: candles(100, 200, 300),
+      from: H,
+    });
+
+    expect(report.short.maxDrawdown.depthPercent).toBe(100);
+    expect(report.short.maxDrawdown.troughTime).toBe(2 * H);
+  });
+
+  it('caps a wiped-out account at 100% instead of dividing past zero', () => {
+    // Une perte cumulée supérieure au capital rend la suite de la courbe
+    // inatteignable : un short entré à 100 et porté jusqu'à 250 perd 150 points,
+    // soit une fois et demie la mise.
+    const report = buildBacktestReport({
+      signals: [enter('SHORT', 1, 100)],
+      candles: candles(100, 150, 250),
+      from: H,
+    });
+
+    expect(report.short.maxDrawdown.depthPercent).toBe(100);
+    expect(report.short.maxDrawdown.troughTime).toBe(3 * H);
   });
 
   it('has no drawdown on a curve that never falls', () => {
@@ -355,5 +436,67 @@ describe('buildBacktestReport — anomalies are listed, never absorbed', () => {
     expect(report.anomalies).toEqual([]);
     expect(report.trades).toHaveLength(1);
     expect(report.equity.map((p) => p.time)).toEqual([H, 2 * H]);
+  });
+});
+
+/**
+ * `relativeDrawdown` est exportée pour que la même formule serve aux courbes que
+ * le rapport ne connaît pas — l'achat-conservation au premier chef. Elle doit
+ * donc être juste sur une courbe **quelconque**, et pas seulement sur celles que
+ * `buildBacktestReport` produit, qui commencent toutes à 0 point.
+ */
+describe('relativeDrawdown', () => {
+  const at = (...values: number[]) =>
+    values.map((value, index) => ({ time: (index + 1) * H, value }));
+
+  it('takes its peak from the first observed point, not from an assumed intact capital', () => {
+    /**
+     * Révélé par mutation, et invisible à travers le rapport : ses courbes
+     * partent toujours de 0 point, aucune entrée ne pouvant perdre avant sa
+     * première bougie. Une courbe quelconque, elle, peut ouvrir plus bas.
+     *
+     * Ici elle ouvre à −120 points, soit une valeur de compte négative : le
+     * capital est déjà épuisé, et la profondeur vaut 100 % dès ce point. Le
+     * **sommet** est cette première bougie, parce que c'est le plus haut point
+     * observé. Un sommet initialisé au capital intact rendrait `peakTime: null`
+     * et prétendrait qu'aucun sommet n'a été vu.
+     */
+    expect(relativeDrawdown(at(-120, -110))).toEqual({
+      depthPercent: 100,
+      peakTime: H,
+      troughTime: H,
+    });
+  });
+
+  it('expresses the fall as a share of the peak', () => {
+    // +100 points puis +50 : la valeur de compte passe de 2 à 1,5, soit 25 %.
+    const result = relativeDrawdown(at(0, 100, 50));
+
+    expect(result.depthPercent).toBeCloseTo(25, 10);
+    expect(result.peakTime).toBe(2 * H);
+    expect(result.troughTime).toBe(3 * H);
+  });
+
+  it('prefers the deepest ratio over the deepest difference', () => {
+    /**
+     * Le piège que signale la documentation Hyperliquid : « ce n'est pas le
+     * drawdown absolu divisé par une valeur de compte ».
+     *
+     * La seconde chute est plus grande en points (900 → 500, soit 400) que la
+     * première (100 → 0, soit 100), mais plus faible en proportion : 40 %
+     * contre 50 %.
+     */
+    const result = relativeDrawdown(at(0, 100, 0, 900, 500));
+
+    expect(result.depthPercent).toBeCloseTo(50, 10);
+    expect(result.troughTime).toBe(3 * H);
+  });
+
+  it('is zero on an empty curve', () => {
+    expect(relativeDrawdown([])).toEqual({
+      depthPercent: 0,
+      peakTime: null,
+      troughTime: null,
+    });
   });
 });

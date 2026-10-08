@@ -66,9 +66,36 @@ export interface BacktestCarriedPosition {
 }
 
 export interface BacktestDrawdown {
-  /** Plus forte baisse depuis un sommet de la courbe, en points de pourcentage (≥ 0). */
+  /**
+   * Plus forte baisse depuis un sommet, **en pourcentage de ce sommet** (0 à
+   * 100) — la définition standard d'un drawdown maximal.
+   *
+   * ⚠️ **Corrigé le 2026-10-08, et les valeurs changent.** Ce champ rendait
+   * `sommet − valeur` sur une courbe de points cumulés : il manquait le
+   * dénominateur, si bien qu'il décrivait le recul du pnl rapporté au capital
+   * **initial** et non au sommet. L'écart n'est pas cosmétique — mesuré sur six
+   * ans de BTC, un achat-conservation donnait « 562 » là où son drawdown réel
+   * est de **76,67 %**. Et l'app l'affichait via `formatPercent`.
+   *
+   * La documentation Hyperliquid décrit sa page portefeuille comme
+   * `max over end > start de (pnl(end) − pnl(start)) / account_value(start)`, en
+   * précisant que ce n'est **pas** le drawdown absolu divisé par une valeur de
+   * compte. Cette formule se réduit à celle employée ici : `(x − b) / (C + x)`
+   * est croissante en `x`, donc le pire intervalle part toujours du sommet
+   * courant, et son dénominateur est la valeur de compte à ce sommet.
+   *
+   * `100` signifie **capital épuisé** : la courbe a atteint zéro, et la suite ne
+   * décrit plus rien d'atteignable.
+   */
   depthPercent: number;
-  /** Bougie du sommet ; `null` = début de fenêtre, où la courbe part de 0. */
+  /**
+   * Bougie du sommet dont part la pire baisse. `null` quand il n'y a aucune
+   * baisse, comme `troughTime` : sans drawdown il n'y a pas de couple
+   * sommet/creux.
+   *
+   * ⚠️ Avant le 2026-10-08, `null` signifiait « le sommet est le début de la
+   * fenêtre » et pouvait accompagner un `depthPercent` non nul.
+   */
   peakTime: number | null;
   /** Bougie du creux ; `null` quand la courbe ne baisse jamais. */
   troughTime: number | null;
@@ -389,22 +416,47 @@ function summarize(
     winRatePercent: trades.length === 0 ? null : (wins / trades.length) * 100,
     realizedPercent: trades.reduce((sum, t) => sum + t.returnPercent, 0),
     unrealizedPercent: open.reduce((sum, p) => sum + (p.unrealizedPercent ?? 0), 0),
-    maxDrawdown: maxDrawdown(curve),
+    maxDrawdown: relativeDrawdown(curve),
   };
 }
 
-/** Plus forte baisse depuis un sommet, la courbe partant de 0 au début de la fenêtre. */
-function maxDrawdown(curve: readonly { time: number; value: number }[]): BacktestDrawdown {
-  let peak = 0;
+/**
+ * Drawdown maximal relatif : `max(sommet − valeur) / sommet`.
+ *
+ * La courbe est en points de pourcentage cumulés à notionnel fixe ; la valeur de
+ * compte est donc `1 + points / 100`, en multiples du capital initial. C'est ce
+ * rapport qui porte le dénominateur dont la version précédente manquait.
+ *
+ * ⚠️ L'hypothèse de notionnel fixe sans réinvestissement est celle de tout ce
+ * rapport (voir son en-tête). Avec un autre dimensionnement, la même suite de
+ * trades donnerait un autre drawdown.
+ *
+ * **Exportée** pour que la même formule serve aussi aux courbes que ce rapport
+ * ne connaît pas — au premier chef l'achat-conservation, la référence à battre.
+ * Deux implémentations d'un même drawdown dériveraient, et c'est arrivé : le
+ * harnais de backtest du bot en portait une copie jusqu'au 2026-10-08.
+ */
+export function relativeDrawdown(
+  curve: readonly { time: number; value: number }[],
+): BacktestDrawdown {
+  let peak = Number.NEGATIVE_INFINITY;
   let peakTime: number | null = null;
   let worst: BacktestDrawdown = { depthPercent: 0, peakTime: null, troughTime: null };
 
   for (const point of curve) {
-    if (point.value > peak) {
-      peak = point.value;
+    const accountValue = 1 + point.value / 100;
+
+    if (accountValue > peak) {
+      peak = accountValue;
       peakTime = point.time;
     }
-    const depth = peak - point.value;
+    if (accountValue <= 0) {
+      // Capital épuisé : la perte est totale, et diviser par un sommet positif
+      // décrirait la suite d'une courbe qui ne peut plus exister.
+      return { depthPercent: 100, peakTime, troughTime: point.time };
+    }
+
+    const depth = ((peak - accountValue) / peak) * 100;
     if (depth > worst.depthPercent) {
       worst = { depthPercent: depth, peakTime, troughTime: point.time };
     }
