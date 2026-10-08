@@ -56,6 +56,11 @@ import {
  * cohérence référentielle d'un opérande `indicator`) : ceux-ci portent sur la
  * forme du nœud lui-même, avant même de savoir si c'est un opérande indicateur.
  */
+import {
+  describeUnsatisfiableComparison,
+  describeUnsatisfiableCross,
+} from './price-bounds.js';
+
 export type StrategyStructureIssueCode =
   | 'MISSING_NODE'
   | 'UNKNOWN_NODE_TYPE'
@@ -79,6 +84,7 @@ export type StrategyStructureIssueCode =
   | 'INVALID_FN_ARITY'
   | 'FN_TOO_DEEP'
   | 'UNKNOWN_CROSS_DIRECTION'
+  | 'UNSATISFIABLE_COMPARISON'
   | 'INVALID_CONSTANT_VALUE'
   | 'EMPTY_STRATEGY_RULES'
   | 'INVALID_EXPRESSION_ID'
@@ -522,6 +528,26 @@ export function collectRuleTreeIssues(
         });
       }
 
+      /**
+       * Une comparaison grammaticalement parfaite peut être **structurellement
+       * muette** : jamais vraie, à aucune bougie. Elle ne lèverait rien et
+       * laisserait croire qu'une condition protège une position. Voir
+       * `price-bounds.ts` pour ce qui est prouvé, et ce qui est volontairement
+       * laissé passer.
+       */
+      const unsatisfiable = describeUnsatisfiableComparison(
+        current.left,
+        current.operator,
+        current.right,
+      );
+      if (unsatisfiable !== null) {
+        issues.push({
+          path,
+          code: 'UNSATISFIABLE_COMPARISON',
+          message: `Comparison at ${path} can never be true. ${unsatisfiable}`,
+        });
+      }
+
       return [
         ...issues,
         ...collectOperandStructureIssues(current.left, `${path}.left`),
@@ -598,6 +624,19 @@ export function collectRuleTreeIssues(
           message:
             `Unknown cross direction "${String(current.direction)}" at ${path}. ` +
             `Allowed: ${CROSS_DIRECTIONS.join(', ')}.`,
+        });
+      }
+
+      const impossibleCross = describeUnsatisfiableCross(
+        current.left,
+        current.right,
+        current.direction,
+      );
+      if (impossibleCross !== null) {
+        issues.push({
+          path,
+          code: 'UNSATISFIABLE_COMPARISON',
+          message: `Cross at ${path} can never happen. ${impossibleCross}`,
         });
       }
 

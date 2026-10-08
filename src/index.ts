@@ -14,6 +14,7 @@ export * from './indicators/indicator-lookback.js';
 export * from './strategies/backtest-report.js';
 export * from './strategies/function-registry.js';
 export * from './strategies/operand-key.js';
+export * from './strategies/price-bounds.js';
 export * from './strategies/rule-builder-grammar.js';
 export * from './strategies/strategy-engine.type.js';
 export * from './strategies/strategy-lookback.js';

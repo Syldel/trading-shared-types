@@ -14,6 +14,78 @@ import {
 } from './strategy-validation.js';
 
 describe('collectRuleTreeIssues', () => {
+  /**
+   * La détection elle-même est éprouvée dans `price-bounds.spec.ts`. Ces deux
+   * tests vérifient qu'elle est **branchée** : une règle muette doit rendre la
+   * stratégie invalide, pas seulement être détectable par une fonction que
+   * personne n'appelle.
+   */
+  it('reports a comparison that can never be true, with its path', () => {
+    const tree = {
+      type: 'logical',
+      operator: 'AND',
+      conditions: [
+        {
+          type: 'comparison',
+          operator: 'LT',
+          left: { type: 'price', field: 'close' },
+          right: {
+            type: 'indicator',
+            name: 'donchian',
+            period: 21,
+            subField: 'lower',
+          },
+        },
+      ],
+    };
+
+    const issues = collectRuleTreeIssues(tree, 'long.exit');
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('UNSATISFIABLE_COMPARISON');
+    expect(issues[0]!.path).toBe('long.exit.conditions[0]');
+    expect(issues[0]!.message).toContain('"offset": 1');
+  });
+
+  it('reports an impossible cross the same way', () => {
+    const tree = {
+      type: 'cross',
+      direction: 'UP',
+      left: { type: 'price', field: 'close' },
+      right: {
+        type: 'indicator',
+        name: 'donchian',
+        period: 21,
+        subField: 'upper',
+      },
+    };
+
+    const issues = collectRuleTreeIssues(tree, 'long.entry');
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('UNSATISFIABLE_COMPARISON');
+    expect(issues[0]!.message).toContain('can never happen');
+  });
+
+  it('leaves the same rule alone once the bound is offset by one candle', () => {
+    // Le correctif que le message recommande doit effectivement lever
+    // l'anomalie, sans quoi il envoie l'utilisateur dans un mur.
+    const tree = {
+      type: 'comparison',
+      operator: 'LT',
+      left: { type: 'price', field: 'close' },
+      right: {
+        type: 'indicator',
+        name: 'donchian',
+        period: 21,
+        subField: 'lower',
+        offset: 1,
+      },
+    };
+
+    expect(collectRuleTreeIssues(tree, 'long.exit')).toEqual([]);
+  });
+
   it('reports the path of the faulty operand in a nested tree', () => {
     const tree = {
       type: 'logical',
