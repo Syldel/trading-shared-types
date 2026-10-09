@@ -9,17 +9,42 @@ import {
  * Rapport de backtest d'une stratégie, dérivé de sa timeline et des bougies sur
  * lesquelles elle a été calculée.
  *
- * Tous les chiffres sont **bruts** : rendement de chaque trade à taille
- * constante, en pourcentage du prix d'entrée, **additionnés** d'un trade à
- * l'autre — ni frais, ni funding, ni slippage, ni levier, ni réinvestissement.
- * Aucun arrondi n'est appliqué : c'est à l'affichage d'arrondir, jamais au
- * calcul (une somme d'arrondis accumule une erreur que rien ne signale).
+ * Rendement de chaque trade à taille constante, en pourcentage du prix
+ * d'entrée, **additionné** d'un trade à l'autre — ni levier, ni
+ * réinvestissement. Aucun arrondi n'est appliqué : c'est à l'affichage
+ * d'arrondir, jamais au calcul (une somme d'arrondis accumule une erreur que
+ * rien ne signale).
+ *
+ * **Les frais sont comptés depuis le 2026-10-09, et c'est une correction de
+ * fond.** Ce rapport est ce que l'app affiche, et il rendait un brut qui se
+ * lisait comme un résultat : mesuré, les frais valaient jusqu'à **27 points de
+ * rendement sur 302 trades**. Chaque chiffre existe donc en deux versions,
+ * `Gross` et `Net`, pour qu'on puisse lire ce qu'ils coûtent — et `feePerSide`
+ * est **requis**, parce qu'un palier supposé est un coût inventé.
+ *
+ * ⚠️ Toujours hors du rapport : le **funding**, le slippage, et l'exécution
+ * réelle. Le funding dépend de la durée de détention et d'un historique horaire
+ * que ce module n'a pas ; les frais, eux, sont connus d'avance et exacts.
+ *
+ * ⚠️ Le palier assumé est celui que l'appelant passe. Un remplissage de ce
+ * rapport est un ordre au marché — il exécute à la clôture de la bougie du
+ * signal et ne simule ni TP ni SL —, donc le **taker** est la lecture fidèle.
  *
  * Remplace `BacktestSummary`, qui couvrait toute la fenêtre calculée —
  * amorçage des indicateurs compris — et mélangeait long et short.
  */
 
 export interface BacktestReportInput {
+  /**
+   * Frais **par côté**, en fraction (0,00045 pour 0,045 %). Un aller-retour en
+   * coûte deux ; une position encore ouverte n'en a payé qu'un.
+   *
+   * **Requis, et non optionnel avec un défaut.** Un défaut serait un palier
+   * supposé, donc un coût inventé — et le palier réel dépend du volume sur 14
+   * jours et du staking HYPE de l'appelant. `HYPERLIQUID_FEES` donne les
+   * paliers publiés pour qui n'en a pas de meilleur.
+   */
+  feePerSide: number;
   signals: readonly TimelineSignal[];
   /** Les bougies de calcul, amorçage compris. Seules celles dès `from` entrent dans le rapport. */
   candles: readonly AnalysisCandle[];
@@ -37,8 +62,16 @@ export interface BacktestTrade {
   entryPrice: number;
   exitTime: number;
   exitPrice: number;
-  /** Positif = gain. */
-  returnPercent: number;
+  /** Positif = gain. Frais exclus. */
+  grossReturnPercent: number;
+  /**
+   * Positif = gain, **frais des deux côtés déduits**.
+   *
+   * ⚠️ Renommé depuis `returnPercent` le 2026-10-09, et c'est délibéré :
+   * garder le nom en changeant son sens aurait déplacé chaque chiffre de chaque
+   * consommateur sans qu'un compilateur n'en dise rien.
+   */
+  netReturnPercent: number;
 }
 
 /** Position ouverte dans la fenêtre et jamais refermée, valorisée à la dernière clôture. */
@@ -49,7 +82,13 @@ export interface BacktestOpenPosition {
   /** `null` si aucune bougie de la fenêtre ne permet de la valoriser. */
   markTime: number | null;
   markPrice: number | null;
-  unrealizedPercent: number | null;
+  unrealizedGrossPercent: number | null;
+  /**
+   * Frais **d'un seul côté** déduits : l'entrée est payée, la sortie ne l'est
+   * pas encore. En compter deux surévaluerait le coût d'une position qu'on n'a
+   * pas refermée.
+   */
+  unrealizedNetPercent: number | null;
 }
 
 /**
@@ -108,16 +147,29 @@ export interface BacktestStats {
   losses: number;
   /** Trades à rendement exactement nul : ni gain ni perte. */
   breakeven: number;
-  /** `null` sans trade : un taux de réussite n'a pas de sens sur zéro trade. */
+  /**
+   * `null` sans trade : un taux de réussite n'a pas de sens sur zéro trade.
+   *
+   * ⚠️ Compté **net**, et l'écart n'est pas théorique : un trade à +0,02 % brut
+   * est une perte en taker. Un taux de réussite brut flatterait exactement les
+   * trades que les frais emportent.
+   */
   winRatePercent: number | null;
-  realizedPercent: number;
+  realizedGrossPercent: number;
+  realizedNetPercent: number;
   /** Positions encore ouvertes en fin de fenêtre, à la dernière clôture. */
-  unrealizedPercent: number;
+  unrealizedGrossPercent: number;
+  unrealizedNetPercent: number;
   /** Sur la courbe à chaque bougie, pertes latentes comprises. */
   maxDrawdown: BacktestDrawdown;
 }
 
-/** Performance cumulée à la clôture d'une bougie : réalisé + latent. */
+/**
+ * Performance cumulée à la clôture d'une bougie : réalisé + latent, **nette**.
+ *
+ * Nette et non brute, parce que c'est cette courbe qui porte le drawdown : un
+ * drawdown brut décrirait un creux que le compte n'a pas traversé.
+ */
 export interface BacktestEquityPoint {
   time: number;
   long: number;
@@ -180,15 +232,51 @@ interface Position {
   exitPrice: number | null;
 }
 
+/**
+ * Paliers perpétuels publiés par Hyperliquid, relevés sur la documentation
+ * officielle le 2026-10-07. Par côté.
+ *
+ * ⚠️ Ce sont les paliers de **base** du dex principal. Ils ne tiennent compte
+ * ni du volume sur 14 jours, ni du staking HYPE, ni de la part du déployeur sur
+ * un marché HIP-3 — mesuré, `deployerFeeScale` est présent sur tous les marchés
+ * `xyz` et sur aucun marché standard, et aucun code ne le lit. Un appelant qui
+ * connaît mieux son palier passe le sien.
+ */
+export const HYPERLIQUID_FEES = {
+  /** Palier de base, preneur de liquidité. */
+  taker: 0.00045,
+  /** Palier de base, apporteur de liquidité. */
+  maker: 0.00015,
+  /** Pour isoler ce que les frais coûtent. */
+  none: 0,
+} as const;
+
 export function returnPercent(side: PositionSide, entryPrice: number, exitPrice: number): number {
   const delta = side === 'LONG' ? exitPrice - entryPrice : entryPrice - exitPrice;
   return (delta / entryPrice) * 100;
 }
 
-export function buildBacktestReport({ signals, candles, from }: BacktestReportInput): BacktestReport {
+export function buildBacktestReport({
+  signals,
+  candles,
+  from,
+  feePerSide,
+}: BacktestReportInput): BacktestReport {
   if (!Number.isFinite(from)) {
     throw new Error(`buildBacktestReport: "from" must be a finite timestamp, got ${from}.`);
   }
+  if (!Number.isFinite(feePerSide) || feePerSide < 0) {
+    // Un frais négatif inflaterait chaque rendement sans que rien ne le dise.
+    // Hyperliquid n'en publie aucun : le palier maker le plus bas est zéro.
+    throw new Error(
+      `buildBacktestReport: "feePerSide" must be a finite fraction of at least 0, got ${feePerSide}.`,
+    );
+  }
+
+  /** Un aller-retour paie les deux côtés. */
+  const roundTripFee = feePerSide * 2 * 100;
+  /** Une position encore ouverte n'a payé que son entrée. */
+  const entryFee = feePerSide * 100;
 
   const anomalies: BacktestAnomaly[] = [];
   const orderedCandles = [...candles].sort((a, b) => a.time - b.time);
@@ -207,7 +295,9 @@ export function buildBacktestReport({ signals, candles, from }: BacktestReportIn
       entryPrice: p.entryPrice,
       exitTime: p.exitTime,
       exitPrice: p.exitPrice,
-      returnPercent: returnPercent(p.side, p.entryPrice, p.exitPrice),
+      grossReturnPercent: returnPercent(p.side, p.entryPrice, p.exitPrice),
+      netReturnPercent:
+        returnPercent(p.side, p.entryPrice, p.exitPrice) - roundTripFee,
     }))
     .sort((a, b) => a.entryTime - b.entryTime);
 
@@ -221,7 +311,12 @@ export function buildBacktestReport({ signals, candles, from }: BacktestReportIn
         entryPrice: p.entryPrice,
         markTime: markable ? lastCandle.time : null,
         markPrice: markable ? lastCandle.close : null,
-        unrealizedPercent: markable ? returnPercent(p.side, p.entryPrice, lastCandle.close) : null,
+        unrealizedGrossPercent: markable
+          ? returnPercent(p.side, p.entryPrice, lastCandle.close)
+          : null,
+        unrealizedNetPercent: markable
+          ? returnPercent(p.side, p.entryPrice, lastCandle.close) - entryFee
+          : null,
       };
     });
 
@@ -233,8 +328,8 @@ export function buildBacktestReport({ signals, candles, from }: BacktestReportIn
   const overlapping = overlap.candles > 0;
 
   const equity: BacktestEquityPoint[] = windowCandles.map((candle) => {
-    const long = equityAt('LONG', candle, trades, inWindow);
-    const short = equityAt('SHORT', candle, trades, inWindow);
+    const long = equityAt('LONG', candle, trades, inWindow, entryFee);
+    const short = equityAt('SHORT', candle, trades, inWindow, entryFee);
     return { time: candle.time, long, short, total: overlapping ? null : long + short };
   });
 
@@ -383,19 +478,32 @@ function measureOverlap(positions: readonly Position[], windowCandles: readonly 
 }
 
 /** Réalisé jusqu'à cette bougie comprise, plus le latent des positions encore ouvertes à sa clôture. */
+/**
+ * Équité **nette** d'un côté, à la clôture d'une bougie.
+ *
+ * Nette, parce que c'est cette courbe qui porte le drawdown : un drawdown brut
+ * décrirait un creux que le compte n'a pas traversé. Les trades refermés
+ * portent déjà leurs deux côtés de frais ; une position encore ouverte n'a payé
+ * que son entrée, d'où `entryFee`.
+ */
 function equityAt(
   side: PositionSide,
   candle: AnalysisCandle,
   trades: readonly BacktestTrade[],
   inWindow: readonly Position[],
+  entryFee: number,
 ): number {
   const realized = trades
     .filter((t) => t.side === side && t.exitTime <= candle.time)
-    .reduce((sum, t) => sum + t.returnPercent, 0);
+    .reduce((sum, t) => sum + t.netReturnPercent, 0);
 
   const unrealized = inWindow
     .filter((p) => p.side === side && isOpenAt(p, candle.time))
-    .reduce((sum, p) => sum + returnPercent(side, p.entryPrice, candle.close), 0);
+    .reduce(
+      (sum, p) =>
+        sum + returnPercent(side, p.entryPrice, candle.close) - entryFee,
+      0,
+    );
 
   return realized + unrealized;
 }
@@ -405,8 +513,14 @@ function summarize(
   open: readonly BacktestOpenPosition[],
   curve: readonly { time: number; value: number }[],
 ): BacktestStats {
-  const wins = trades.filter((t) => t.returnPercent > 0).length;
-  const losses = trades.filter((t) => t.returnPercent < 0).length;
+  // Gagnants et perdants comptés **net** : un trade à +0,02 % brut est une
+  // perte en taker, et un taux de réussite brut flatterait exactement les
+  // trades que les frais emportent.
+  const wins = trades.filter((t) => t.netReturnPercent > 0).length;
+  const losses = trades.filter((t) => t.netReturnPercent < 0).length;
+
+  const sum = (values: readonly number[]) =>
+    values.reduce((total, value) => total + value, 0);
 
   return {
     trades: trades.length,
@@ -414,8 +528,12 @@ function summarize(
     losses,
     breakeven: trades.length - wins - losses,
     winRatePercent: trades.length === 0 ? null : (wins / trades.length) * 100,
-    realizedPercent: trades.reduce((sum, t) => sum + t.returnPercent, 0),
-    unrealizedPercent: open.reduce((sum, p) => sum + (p.unrealizedPercent ?? 0), 0),
+    realizedGrossPercent: sum(trades.map((t) => t.grossReturnPercent)),
+    realizedNetPercent: sum(trades.map((t) => t.netReturnPercent)),
+    unrealizedGrossPercent: sum(
+      open.map((p) => p.unrealizedGrossPercent ?? 0),
+    ),
+    unrealizedNetPercent: sum(open.map((p) => p.unrealizedNetPercent ?? 0)),
     maxDrawdown: relativeDrawdown(curve),
   };
 }
