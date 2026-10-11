@@ -16,4 +16,4 @@
  * Voir `docs/trading/mobile-app-integration.md` dans nest-trading-bot.
  * ============================================================================
  */
-export const PACKAGE_VERSION = '0.28.0';
+export const PACKAGE_VERSION = '0.29.0';
