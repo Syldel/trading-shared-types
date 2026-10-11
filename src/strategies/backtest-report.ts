@@ -252,10 +252,18 @@ interface Position {
  * officielle le 2026-10-07. Par côté.
  *
  * ⚠️ Ce sont les paliers de **base** du dex principal. Ils ne tiennent compte
- * ni du volume sur 14 jours, ni du staking HYPE, ni de la part du déployeur sur
- * un marché HIP-3 — mesuré, `deployerFeeScale` est présent sur tous les marchés
- * `xyz` et sur aucun marché standard, et aucun code ne le lit. Un appelant qui
- * connaît mieux son palier passe le sien.
+ * ni du volume sur 14 jours, ni du staking HYPE, ni du barème propre à un
+ * marché HIP-3. Un appelant qui connaît mieux son palier passe le sien.
+ *
+ * ⚠️ **Sur un marché HIP-3, l'écart n'est pas un petit supplément, et il ne va
+ * pas toujours dans le même sens.** La formule officielle multiplie le taux par
+ * `deployerFeeScale × 2` (quand l'échelle vaut au moins 1) puis par `0,1` si le
+ * marché est en growth mode. Mesuré le 2026-10-11 sur les 134 marchés du dex
+ * `xyz` : `deployerFeeScale` vaut `'1.0'` partout, et `growthMode` est actif
+ * sur 109 des 114 marchés vivants. Ces paliers y **surestiment donc le coût
+ * d'un facteur 5**, et le sous-estiment d'un facteur 2 sur les 5 autres.
+ * Les appliquer tels quels à un `xyz:` ne donne pas un net prudent : il donne
+ * un net faux, dans un sens qu'on ne peut pas deviner sans lire le marché.
  */
 export const HYPERLIQUID_FEES = {
   /** Palier de base, preneur de liquidité. */
@@ -265,6 +273,99 @@ export const HYPERLIQUID_FEES = {
   /** Pour isoler ce que les frais coûtent. */
   none: 0,
 } as const;
+
+/**
+ * Ce qui transforme un palier publié en taux réellement facturé sur un marché.
+ *
+ * Les deux premiers champs sont servis tels quels par `perp-markets`
+ * (`deployerFeeScale` est une chaîne décimale côté API — c'est à l'appelant de
+ * la convertir, en refusant ce qui n'est pas un nombre plutôt qu'en laissant
+ * `Number('')` rendre `0`).
+ */
+export interface PerpFeeInput {
+  /** Palier publié, par côté, en fraction. Positif. */
+  baseRatePerSide: number;
+  /**
+   * `deployerFeeScale` du marché. Absent sur le dex principal — et c'est bien
+   * une absence, pas un zéro : une échelle de `0` est un déployeur qui ne
+   * prend rien, ce qui n'est pas la même chose que « pas de déployeur ».
+   */
+  deployerFeeScale?: number | null;
+  /** `growthMode` actif sur ce marché. */
+  growthMode?: boolean;
+  /** `activeReferralDiscount` du point de terminaison `userFees`, entre 0 et 1. */
+  referralDiscount?: number;
+}
+
+/**
+ * Le taux par côté réellement facturé sur un **perp**, d'après la formule
+ * publiée par Hyperliquid (« Fee formula for developers », page Fees, relevée
+ * le 2026-10-11).
+ *
+ * Pourquoi cette fonction existe : `HYPERLIQUID_FEES` seul a produit un
+ * mensonge durable. Le harnais appliquait le palier du dex principal à
+ * `xyz:BRENTOIL` et annonçait que le net était « optimiste », alors qu'il était
+ * **cinq fois trop pessimiste**. Des constantes séparées de la transformation
+ * qui les rend utilisables, c'est une invitation à les employer crues.
+ *
+ * La transcription, champ par champ :
+ *
+ * ```
+ * scaleIfHip3 = deployerFeeScale < 1 ? deployerFeeScale + 1 : deployerFeeScale * 2
+ * ```
+ *
+ * Ce n'est pas arbitraire, et le reste de la page le recoupe : le déployeur
+ * prend `deployerFeeScale` fois le barème de base, et « if the share is above
+ * 100 %, the protocol fee is also increased to be equal to the deployer fee ».
+ * À `0,5` : le déployeur prend 0,5×, le protocole 1× → 1,5× au total. À `1,0` :
+ * 1× et 1× → 2×. Les deux branches disent la même chose.
+ *
+ * ⚠️ **Ce qui n'est pas transcrit, et pourquoi :**
+ *
+ * - `scaleIfStablePair` est propre au **spot**, que ce dépôt ne simule pas ;
+ * - la branche `isAlignedQuoteToken` (−20 % sur le taker) est omise parce
+ *   qu'aucune donnée des trois dépôts ne permet aujourd'hui de savoir si un
+ *   marché y a droit. L'ajouter avec un défaut à `false` donnerait une
+ *   apparence de complétude à une entrée que personne ne peut renseigner ;
+ * - la branche **rebate** du maker (`makerPercentage <= 0`) ne l'est pas non
+ *   plus. Pour un taux maker **positif**, la page applique exactement la même
+ *   chaîne que pour le taker — `scaleIfHip3 × growthModeScale ×
+ *   (1 − referralDiscount)` — donc cette fonction vaut pour les deux. Elle
+ *   cesse de valoir dès que le taux passe sous zéro, et c'est pour ça qu'elle
+ *   le refuse.
+ */
+export function perpFeePerSide({
+  baseRatePerSide,
+  deployerFeeScale,
+  growthMode = false,
+  referralDiscount = 0,
+}: PerpFeeInput): number {
+  if (!Number.isFinite(baseRatePerSide) || baseRatePerSide < 0) {
+    throw new Error(
+      `perpFeePerSide: "baseRatePerSide" must be a finite fraction of at least 0, got ${baseRatePerSide}.`,
+    );
+  }
+  if (deployerFeeScale != null && (!Number.isFinite(deployerFeeScale) || deployerFeeScale < 0)) {
+    throw new Error(
+      `perpFeePerSide: "deployerFeeScale" must be a finite number of at least 0, got ${deployerFeeScale}.`,
+    );
+  }
+  if (!Number.isFinite(referralDiscount) || referralDiscount < 0 || referralDiscount > 1) {
+    throw new Error(
+      `perpFeePerSide: "referralDiscount" must be between 0 and 1, got ${referralDiscount}.`,
+    );
+  }
+
+  const scaleIfHip3 =
+    deployerFeeScale == null
+      ? 1
+      : deployerFeeScale < 1
+        ? deployerFeeScale + 1
+        : deployerFeeScale * 2;
+  const growthModeScale = growthMode ? 0.1 : 1;
+
+  return baseRatePerSide * scaleIfHip3 * growthModeScale * (1 - referralDiscount);
+}
 
 export function returnPercent(side: PositionSide, entryPrice: number, exitPrice: number): number {
   const delta = side === 'LONG' ? exitPrice - entryPrice : entryPrice - exitPrice;
@@ -281,8 +382,21 @@ export function buildBacktestReport({
     throw new Error(`buildBacktestReport: "from" must be a finite timestamp, got ${from}.`);
   }
   if (!Number.isFinite(feePerSide) || feePerSide < 0) {
-    // Un frais négatif inflaterait chaque rendement sans que rien ne le dise.
-    // Hyperliquid n'en publie aucun : le palier maker le plus bas est zéro.
+    /**
+     * Un frais négatif gonflerait chaque rendement sans que rien ne le dise.
+     *
+     * ⚠️ La justification d'origine — « Hyperliquid n'en publie aucun » — était
+     * fausse, corrigée le 2026-10-11 : la page des frais publie une table
+     * « Maker rebates » qui va jusqu'à **−0,003 %** pour un gros apporteur de
+     * liquidité. Un frais par côté négatif existe donc bel et bien.
+     *
+     * Le refus tient quand même, pour une autre raison : ce rapport remplit
+     * **au marché**, à la clôture de la bougie du signal. C'est un fill taker
+     * des deux côtés, et un taker ne touche jamais de rebate. Accepter un frais
+     * négatif ici reviendrait à créditer une rémunération qu'aucun des ordres
+     * simulés n'a pu gagner. Le jour où le simulateur saura poser des limites,
+     * ce sera à rouvrir — pas avant.
+     */
     throw new Error(
       `buildBacktestReport: "feePerSide" must be a finite fraction of at least 0, got ${feePerSide}.`,
     );

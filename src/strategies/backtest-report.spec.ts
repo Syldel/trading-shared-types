@@ -3,6 +3,7 @@ import type { AnalysisCandle } from '../analysis/analysis-candle.type.js';
 import {
   HYPERLIQUID_FEES,
   buildBacktestReport,
+  perpFeePerSide,
   relativeDrawdown,
 } from './backtest-report.js';
 import type { BacktestReportInput } from './backtest-report.js';
@@ -637,8 +638,14 @@ describe('buildBacktestReport — fees', () => {
   });
 
   it('refuses a fee it cannot charge', () => {
-    // Un frais négatif inflaterait chaque rendement sans que rien ne le dise,
-    // et Hyperliquid n'en publie aucun : le palier maker le plus bas est zéro.
+    /**
+     * Un frais négatif gonflerait chaque rendement sans que rien ne le dise.
+     *
+     * ⚠️ Et non pas « parce qu'Hyperliquid n'en publie aucun » : la table
+     * « Maker rebates » en publie, jusqu'à −0,003 %. La vraie raison est dans
+     * le nom du test — ce simulateur remplit au marché, donc en taker, et un
+     * taker ne touche pas de rebate.
+     */
     for (const feePerSide of [-0.001, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() =>
         buildBacktestReport({ ...oneTrade(), feePerSide }),
@@ -691,5 +698,128 @@ describe('buildBacktestReport — fees', () => {
     expect(HYPERLIQUID_FEES.taker).toBe(0.00045);
     expect(HYPERLIQUID_FEES.maker).toBe(0.00015);
     expect(HYPERLIQUID_FEES.none).toBe(0);
+  });
+});
+
+/**
+ * La formule publiée par Hyperliquid (page Fees, « Fee formula for
+ * developers »), transcrite le 2026-10-11. Chaque test fixe soit une branche de
+ * la formule, soit un cas réel relevé sur le dex `xyz` le même jour.
+ */
+describe('perpFeePerSide', () => {
+  const BASE = HYPERLIQUID_FEES.taker;
+
+  it('leaves a main-dex market at its published tier', () => {
+    // Pas de déployeur, pas de growth mode : la formule est l'identité.
+    expect(perpFeePerSide({ baseRatePerSide: BASE })).toBe(BASE);
+  });
+
+  it('doubles the rate at the scale every live xyz market carries', () => {
+    /**
+     * Mesuré le 2026-10-11 : `deployerFeeScale` vaut `'1.0'` sur 134 marchés
+     * `xyz` sur 134 — la seule valeur que nous ayons jamais observée.
+     *
+     * ⚠️ La frontière `< 1` n'est **pas** un piège, contrairement à ce qu'elle
+     * laisse croire : la formule y est continue. À `1`, la branche basse rend
+     * `1 + 1 = 2` et la branche haute `1 × 2 = 2`. Remplacer `<` par `<=` ne
+     * change donc aucune valeur, et aucun test ne peut l'attraper — mutation
+     * survivante, prouvée équivalente, pas une lacune. Le `<` est gardé parce
+     * que c'est ce que la page écrit.
+     */
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 1 })).toBeCloseTo(
+      0.0009,
+      12,
+    );
+  });
+
+  it('adds one below the boundary instead of doubling', () => {
+    // `0.5` : le déployeur prend 0,5×, le protocole 1× → 1,5× au total.
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 0.5 })).toBeCloseTo(
+      0.000675,
+      12,
+    );
+  });
+
+  it('lands on the published growth-mode rate for a real xyz market', () => {
+    /**
+     * Le cas qui compte : `xyz:BRENTOIL`, `deployerFeeScale: '1.0'`,
+     * `growthMode: 'enabled'`. La page annonce de son côté « the baseline
+     * all-in taker rate under growth mode will be between 0.0045 %-0.009 % », et
+     * 0,009 % est exactement ce que la formule rend ici.
+     *
+     * C'est aussi la mesure de ce que notre harnais facturait de trop : 0,045 %
+     * au lieu de 0,009 %, soit **cinq fois**.
+     */
+    const rate = perpFeePerSide({
+      baseRatePerSide: BASE,
+      deployerFeeScale: 1,
+      growthMode: true,
+    });
+
+    expect(rate).toBeCloseTo(0.00009, 12);
+    expect(BASE / rate).toBeCloseTo(5, 10);
+  });
+
+  it('treats an absent deployer scale as no deployer, never as zero', () => {
+    /**
+     * Une échelle de `0` est un déployeur qui ne prend rien : la formule rend
+     * alors `× 1` — même résultat qu'une absence, mais pour une autre raison.
+     *
+     * ⚠️ Le garde `== null` ne se teste pas, et c'est assumé : remplacer
+     * `== null` par `=== undefined` laisse un `null` traverser la formule, où
+     * `null < 1` vaut `true` et `null + 1` vaut `1` — donc exactement le même
+     * résultat, par coïncidence de coercition. Mutation survivante, prouvée
+     * équivalente. Le garde reste parce qu'il dit l'intention et qu'il tient
+     * sans dépendre de cette coïncidence.
+     */
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: null })).toBe(BASE);
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 0 })).toBeCloseTo(
+      BASE,
+      12,
+    );
+  });
+
+  it('applies growth mode on top of the deployer scale, not instead of it', () => {
+    // La page : « Growth mode applies on top of other multipliers ».
+    const withBoth = perpFeePerSide({
+      baseRatePerSide: BASE,
+      deployerFeeScale: 0.5,
+      growthMode: true,
+    });
+
+    expect(withBoth).toBeCloseTo(0.0000675, 12);
+  });
+
+  it('discounts a referral last, on the already-scaled rate', () => {
+    // Ce test fixe la **valeur**, pas l'ordre des facteurs : la multiplication
+    // commute, et déplacer `(1 - referralDiscount)` en tête rend le même
+    // nombre au bit près (vérifié). Mutation survivante, prouvée équivalente.
+    expect(
+      perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 1, referralDiscount: 0.4 }),
+    ).toBeCloseTo(0.00054, 12);
+  });
+
+  it('scales a positive maker rate exactly like a taker one', () => {
+    /**
+     * La page sépare les deux branches, mais pour un taux maker **positif**
+     * elle applique la même chaîne. C'est ce qui autorise une seule fonction —
+     * et ce test est ce qui empêche de l'oublier.
+     */
+    expect(
+      perpFeePerSide({ baseRatePerSide: HYPERLIQUID_FEES.maker, deployerFeeScale: 1 }),
+    ).toBeCloseTo(HYPERLIQUID_FEES.maker * 2, 12);
+  });
+
+  it('refuses inputs the formula cannot describe', () => {
+    // Un taux négatif est un rebate, et la branche rebate n'est pas transcrite
+    // — voir l'en-tête de la fonction.
+    expect(() => perpFeePerSide({ baseRatePerSide: -0.0001 })).toThrow(/baseRatePerSide/);
+    expect(() => perpFeePerSide({ baseRatePerSide: Number.NaN })).toThrow(/baseRatePerSide/);
+    expect(() =>
+      perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: -1 }),
+    ).toThrow(/deployerFeeScale/);
+    expect(() =>
+      perpFeePerSide({ baseRatePerSide: BASE, referralDiscount: 1.5 }),
+    ).toThrow(/referralDiscount/);
   });
 });
