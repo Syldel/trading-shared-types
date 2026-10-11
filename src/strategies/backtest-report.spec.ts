@@ -652,6 +652,39 @@ describe('buildBacktestReport — fees', () => {
     ).not.toThrow();
   });
 
+  it('echoes the tier it was given, so a reader can name it', () => {
+    /**
+     * Le mobile affiche ce rapport et ne peut pas deviner le palier : c'est une
+     * constante privée du bot. Sans cet écho il écrit « net des frais » sans
+     * pouvoir dire desquels, et nommer le palier depuis le paquet partagé en
+     * ferait une seconde source de vérité.
+     */
+    expect(buildBacktestReport(oneTrade()).feePerSide).toBe(FEE);
+  });
+
+  it('echoes the tier even when it changes nothing to report', () => {
+    /**
+     * Un palier renvoyé depuis les trades serait indéfinissable sur une fenêtre
+     * vide — et c'est précisément là que l'écran a besoin de le nommer, pour
+     * dire sous quelle hypothèse le vide a été produit.
+     */
+    const empty = buildBacktestReport({
+      signals: [],
+      candles: [],
+      from: H,
+      feePerSide: HYPERLIQUID_FEES.maker,
+    });
+
+    expect(empty.trades).toHaveLength(0);
+    expect(empty.feePerSide).toBe(HYPERLIQUID_FEES.maker);
+  });
+
+  it('echoes a zero tier as zero, never as a default', () => {
+    // `0` est un palier choisi — celui qui isole ce que les frais coûtent. Le
+    // confondre avec « non renseigné » ferait afficher un palier inventé.
+    expect(buildBacktestReport({ ...oneTrade(), feePerSide: 0 }).feePerSide).toBe(0);
+  });
+
   it('carries the published Hyperliquid tiers for a caller with nothing better', () => {
     // Relevés sur la documentation officielle le 2026-10-07. Les changer est
     // une décision, pas un ajustement.

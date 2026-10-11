@@ -207,6 +207,21 @@ export interface BacktestReport {
   from: number;
   /** Temps d'ouverture de la dernière bougie de la fenêtre ; `null` si la fenêtre est vide. */
   to: number | null;
+  /**
+   * Le palier appliqué, **renvoyé tel qu'il a été reçu**.
+   *
+   * Un rapport qui annonce des chiffres nets sans dire de quoi oblige son
+   * lecteur à le deviner — et le mobile ne peut pas : `feePerSide` est une
+   * constante privée du bot. S'il importait `HYPERLIQUID_FEES` pour nommer le
+   * palier, il en ferait une **seconde source de vérité**, qui divergerait en
+   * silence le jour où le bot passerait au palier réel de l'utilisateur
+   * (volume sur 14 jours, staking HYPE). Le rapport se décrit donc lui-même.
+   *
+   * ⚠️ C'est un écho, pas une mesure : il dit l'hypothèse sous laquelle les
+   * chiffres ont été produits, pas ce qu'un remplissage aurait réellement
+   * coûté. Le funding et le slippage restent hors du rapport.
+   */
+  feePerSide: number;
   long: BacktestStats;
   short: BacktestStats;
   /**
@@ -346,6 +361,7 @@ export function buildBacktestReport({
   return {
     from,
     to: lastCandle?.time ?? null,
+    feePerSide,
     long: statsFor('LONG'),
     short: statsFor('SHORT'),
     total: overlapping ? null : statsFor(null),
