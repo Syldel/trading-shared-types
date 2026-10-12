@@ -323,10 +323,20 @@ export interface PerpFeeInput {
  * ⚠️ **Ce qui n'est pas transcrit, et pourquoi :**
  *
  * - `scaleIfStablePair` est propre au **spot**, que ce dépôt ne simule pas ;
- * - la branche `isAlignedQuoteToken` (−20 % sur le taker) est omise parce
- *   qu'aucune donnée des trois dépôts ne permet aujourd'hui de savoir si un
- *   marché y a droit. L'ajouter avec un défaut à `false` donnerait une
- *   apparence de complétude à une entrée que personne ne peut renseigner ;
+ * - la branche `isAlignedQuoteToken` est omise parce qu'aucune donnée des trois
+ *   dépôts ne permet de savoir si un marché y a droit. L'ajouter avec un
+ *   défaut à `false` donnerait une apparence de complétude à une entrée que
+ *   personne ne peut renseigner.
+ *
+ *   ⚠️ **Ce n'est pas une branche théorique, et elle ne vaut pas −20 %.** Le
+ *   facteur brut est bien `× 0,8`, mais la formule le mélange à la part du
+ *   déployeur : `(1 − deployerShare) × 0,8 + deployerShare`. Donc −20 % sur le
+ *   dex principal (`deployerShare` nul), mais **−10 %** sur un marché HIP-3 à
+ *   `deployerFeeScale` 1,0, où `deployerShare` vaut 0,5. Mesuré le 2026-10-12
+ *   sur de vrais remplissages : le taker du dex `vntl` porte ce ×0,9, le maker
+ *   non — ce qui recoupe « 20 % lower taker fees, 50 % better maker
+ *   **rebates** », un maker positif n'étant pas un rebate. Voir
+ *   `nest-trading-bot/docs/known-gaps.md`, point 11 ;
  * - la branche **rebate** du maker (`makerPercentage <= 0`) ne l'est pas non
  *   plus. Pour un taux maker **positif**, la page applique exactement la même
  *   chaîne que pour le taker — `scaleIfHip3 × growthModeScale ×
