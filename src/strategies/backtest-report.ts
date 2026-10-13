@@ -697,14 +697,39 @@ function summarize(
 export function relativeDrawdown(
   curve: readonly { time: number; value: number }[],
 ): BacktestDrawdown {
-  let peak = Number.NEGATIVE_INFINITY;
+  /**
+   * Le sommet part du **capital intact**, et n'en descend jamais.
+   *
+   * Établi d'abord à `-Infinity`, c'est-à-dire « le plus haut point observé ».
+   * Corrigé le 2026-10-13 : cette définition contredisait le contrat écrit
+   * juste au-dessus, où la valeur de compte vaut `1 + points / 100` — le
+   * capital au début de la fenêtre **fait partie** de l'historique du compte, et
+   * l'ignorer efface une perte réelle. Une courbe ouvrant à −10 points puis
+   * descendant à −20 rendait 11,11 % là où le compte a bien perdu 20 %.
+   *
+   * C'est aussi ce que fait Freqtrade, dont la formule est par ailleurs la
+   * nôtre : son pic cumulé est borné par `.clip(lower=0)`, donc le solde de
+   * pointe ne descend jamais sous le solde de départ.
+   *
+   * ⚠️ Conséquence sur `peakTime` : il vaut `null` tant que la courbe n'a pas
+   * dépassé le capital intact. Ce n'est pas une absence de sommet, c'est un
+   * sommet qui est le **début de la fenêtre** — un appelant qui l'affiche y
+   * substitue `BacktestReport.from`.
+   */
+  let peak = 1;
   let peakTime: number | null = null;
+
   let worst: BacktestDrawdown = { depthPercent: 0, peakTime: null, troughTime: null };
 
   for (const point of curve) {
     const accountValue = 1 + point.value / 100;
 
-    if (accountValue > peak) {
+    // `>=` et non `>` : il faut que le premier point d'une courbe partant du
+    // capital intact puisse revendiquer le sommet, sinon le cas courant perdrait
+    // son `peakTime`. L'effet de bord est souhaitable — sur un sommet touché
+    // plusieurs fois, `peakTime` désigne le **dernier** passage, c'est-à-dire le
+    // moment où la chute commence, qui est ce qu'une durée de drawdown mesure.
+    if (accountValue >= peak) {
       peak = accountValue;
       peakTime = point.time;
     }

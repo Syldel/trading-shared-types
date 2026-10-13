@@ -256,16 +256,22 @@ describe('buildBacktestReport — open positions and the curve', () => {
     expect(report.long.maxDrawdown.troughTime).toBe(3 * H);
   });
 
-  it('reports the first of two equal peaks', () => {
-    // Révélé par mutation. Sur deux sommets de même valeur, c'est le premier
-    // qui est rapporté : la courbe monte à +10, y reste, puis retombe.
+  it('reports the last touch of a repeated peak, where the fall begins', () => {
+    /**
+     * Révélé par mutation, qui ne disait que « les égalités sont traitées
+     * d'une façon déterminée » — pas laquelle. Jusqu'au 2026-10-13 c'était le
+     * **premier** passage ; c'est désormais le dernier, et le changement est
+     * délibéré : un drawdown commence quand l'équité **quitte** son sommet. La
+     * courbe plafonne à +10 sur deux bougies, donc la chute part de la seconde,
+     * et c'est ce que mesurera une durée de drawdown.
+     */
     const report = buildReport({
       signals: [enter('LONG', 1, 100)],
       candles: candles(100, 110, 110, 105),
       from: H,
     });
 
-    expect(report.long.maxDrawdown.peakTime).toBe(2 * H);
+    expect(report.long.maxDrawdown.peakTime).toBe(3 * H);
     expect(report.long.maxDrawdown.troughTime).toBe(4 * H);
   });
 
@@ -464,21 +470,45 @@ describe('relativeDrawdown', () => {
   const at = (...values: number[]) =>
     values.map((value, index) => ({ time: (index + 1) * H, value }));
 
-  it('takes its peak from the first observed point, not from an assumed intact capital', () => {
+  it('floors its peak at the intact capital, never below', () => {
     /**
-     * Révélé par mutation, et invisible à travers le rapport : ses courbes
-     * partent toujours de 0 point, aucune entrée ne pouvant perdre avant sa
-     * première bougie. Une courbe quelconque, elle, peut ouvrir plus bas.
+     * ⚠️ **Ce test disait l'inverse jusqu'au 2026-10-13**, au nom de « le sommet
+     * est le plus haut point observé ». C'était contredire le contrat écrit sur
+     * la fonction : la courbe est en points cumulés **depuis le début de la
+     * fenêtre**, donc le compte valait 1 à cet instant-là, et une chute sous 1
+     * est une perte réelle qu'il n'y a aucune raison d'effacer.
      *
-     * Ici elle ouvre à −120 points, soit une valeur de compte négative : le
-     * capital est déjà épuisé, et la profondeur vaut 100 % dès ce point. Le
-     * **sommet** est cette première bougie, parce que c'est le plus haut point
-     * observé. Un sommet initialisé au capital intact rendrait `peakTime: null`
-     * et prétendrait qu'aucun sommet n'a été vu.
+     * Une courbe ouvrant à −10 puis descendant à −20 rendait **11,11 %** là où
+     * le compte a perdu 20 %. Freqtrade borne son pic de la même façon
+     * (`cummax().clip(lower=0)`), et sa formule est déjà la nôtre par ailleurs.
+     *
+     * `peakTime` vaut `null` ici : le sommet est le début de la fenêtre, pas une
+     * bougie. C'est plus exact que de désigner la première bougie venue.
      */
+    const result = relativeDrawdown(at(-10, -20));
+
+    expect(result.depthPercent).toBeCloseTo(20, 10);
+    expect(result.peakTime).toBeNull();
+    expect(result.troughTime).toBe(2 * H);
+  });
+
+  it('still names a candle as the peak when the curve starts whole', () => {
+    // Le cas courant ne doit rien perdre : une courbe qui ouvre au capital
+    // intact revendique bien ce premier point comme sommet.
+    const result = relativeDrawdown(at(0, -20));
+
+    expect(result.depthPercent).toBeCloseTo(20, 10);
+    expect(result.peakTime).toBe(H);
+    expect(result.troughTime).toBe(2 * H);
+  });
+
+  it('reports a wiped account as a total loss', () => {
+    // Valeur de compte négative dès le premier point : la perte est totale, et
+    // diviser par un sommet positif décrirait la suite d'une courbe qui ne peut
+    // plus exister.
     expect(relativeDrawdown(at(-120, -110))).toEqual({
       depthPercent: 100,
-      peakTime: H,
+      peakTime: null,
       troughTime: H,
     });
   });
@@ -599,12 +629,20 @@ describe('buildBacktestReport — fees', () => {
      * c'est ce qui rend le drawdown juste.
      *
      * Position ouverte à 100. À la première bougie, le brut vaut 0 et le net
-     * −0,1 : la valeur de compte est donc déjà à 0,999, pas à 1. À la seconde,
-     * valorisée à 90, le net vaut −10,1 et la valeur de compte 0,899.
+     * −0,1 : la valeur de compte est déjà à 0,999. À la seconde, valorisée à 90,
+     * le net vaut −10,1 et la valeur de compte 0,899.
      *
-     * Le creux se mesure depuis le sommet observé, soit 0,999 :
-     * `0,1 / 0,999 = 10,01 %`. Ni 10 % (qui ignorerait les frais) ni 10,1 %
-     * (qui mesurerait depuis un capital intact que le compte a déjà quitté).
+     * ⚠️ **Ce test attendait 10,01 % jusqu'au 2026-10-13**, en mesurant depuis
+     * 0,999 au motif que le compte avait « déjà quitté » le capital intact.
+     * C'était l'argument à l'envers : le compte valait bien 1 au début de la
+     * fenêtre, et le frais d'entrée est ce qui l'en a fait descendre — donc une
+     * part de la chute, pas un point de départ plus bas. La bonne valeur est
+     * `0,101 / 1 = 10,1 %`.
+     *
+     * Et ce cas n'a rien d'exotique : **toute** position ouverte sur la
+     * première bougie de la fenêtre faisait plonger la courbe sous 1 avant
+     * qu'aucun point n'ait valu 1, et sous-estimait donc le drawdown du montant
+     * du frais d'entrée.
      */
     const report = buildBacktestReport({
       signals: [enter('LONG', 1, 100)],
@@ -614,7 +652,7 @@ describe('buildBacktestReport — fees', () => {
     });
 
     expect(report.equity.at(-1)!.long).toBeCloseTo(-10.1, 10);
-    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(10.01001, 5);
+    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(10.1, 10);
   });
 
   it('keeps the net figure on the curve after a trade closes', () => {
