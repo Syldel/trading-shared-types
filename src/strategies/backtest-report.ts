@@ -218,11 +218,16 @@ export interface BacktestStats {
    * de données le 2026-10-13, l'écart allait de 0,76 à 2,79 points sur
    * l'achat-conservation, toujours dans le même sens.
    *
-   * ⚠️ **C'est une borne inférieure, pas la vérité.** Le sommet est lu sur cette
-   * même courbe adverse et non sur l'extrême favorable de la bougie : apparier
-   * un plus haut et un plus bas à l'intérieur d'une seule bougie supposerait un
-   * ordre que l'OHLC ne donne pas. Le vrai creux intra-bougie peut donc être
-   * plus profond encore — jamais moins.
+   * Le sommet, lui, se lit sur les **clôtures** (voir `adverseDrawdown`), et
+   * c'est ce qui rend ce chiffre comparable au précédent : à sommet égal et
+   * creux plus bas, il ne peut pas être moins profond. La version 0.31.0 lisait
+   * les deux sur la courbe adverse et affichait l'inverse une fois sur deux.
+   *
+   * ⚠️ **C'est une borne inférieure, pas la vérité.** Un vrai sommet
+   * intra-bougie — le plus haut de la bougie — creuserait davantage, mais
+   * apparier un plus haut et un plus bas à l'intérieur d'une même bougie
+   * supposerait un ordre que l'OHLC ne donne pas. Le vrai creux peut donc être
+   * plus profond encore ; jamais moins.
    *
    * Pas d'équivalent courant : `currentDrawdown` dit où le compte **est**, à la
    * dernière clôture, et un « où il est au pire instant » ne désignerait aucun
@@ -579,9 +584,13 @@ export function buildBacktestReport({
       time: point.time,
       value: valueOf(point),
     }));
-    const adverseCurve = adverse.map((point) => ({
+    // Les deux courbes appariées bougie par bougie : `adverseDrawdown` lit le
+    // sommet à la clôture et le creux au pire instant, et deux tableaux séparés
+    // finiraient par se désaligner.
+    const adverseCurve: AdversePoint[] = equity.map((point, index) => ({
       time: point.time,
       value: valueOf(point),
+      worst: valueOf(adverse[index]!),
     }));
     return summarize(sideTrades, sideOpen, curve, adverseCurve);
   };
@@ -802,7 +811,7 @@ function summarize(
   trades: readonly BacktestTrade[],
   open: readonly BacktestOpenPosition[],
   curve: readonly { time: number; value: number }[],
-  adverseCurve: readonly { time: number; value: number }[],
+  adverseCurve: readonly AdversePoint[],
 ): BacktestStats {
   // Gagnants et perdants comptés **net** : un trade à +0,02 % brut est une
   // perte en taker, et un taux de réussite brut flatterait exactement les
@@ -826,8 +835,69 @@ function summarize(
     ),
     unrealizedNetPercent: sum(open.map((p) => p.unrealizedNetPercent ?? 0)),
     ...drawdowns(curve),
-    maxDrawdownIntrabar: measureDrawdowns(adverseCurve).max,
+    maxDrawdownIntrabar: adverseDrawdown(adverseCurve),
   };
+}
+
+/**
+ * Une bougie vue deux fois : à sa clôture, et à son pire instant.
+ *
+ * `worst` ne dépasse jamais `value` — c'est garanti à la construction, parce
+ * qu'une courbe « au pire » qui passerait au-dessus de l'autre ne serait le pire
+ * de rien.
+ */
+export interface AdversePoint {
+  time: number;
+  value: number;
+  worst: number;
+}
+
+/**
+ * Le pire creux **intra-bougie** : le sommet se lit sur les clôtures, le creux
+ * au pire instant.
+ *
+ * ⚠️ **Mesurer les deux sur la courbe adverse ne marche pas**, et c'est le
+ * défaut que la version 0.31.0 a mis à l'écran : une courbe pointwise plus basse
+ * ne donne pas un drawdown plus profond, puisque le creux se rapporte au sommet
+ * de **sa propre** courbe. Une mèche sous la bougie du sommet abaisse ce sommet,
+ * et le creux rapetisse avec lui. Mesuré sur BTC le 2026-10-14, le mobile
+ * affichait un intra-bougie de **2,41 %** sous un close-to-close de 2,86 % —
+ * c'est-à-dire l'inverse de ce que la ligne promet.
+ *
+ * Le sommet monte donc **après** le creux de la même bougie : à l'intérieur
+ * d'une bougie, le pire instant précède la clôture, et un sommet posé par cette
+ * clôture lui serait postérieur. De là, l'invariant : à sommet égal et creux
+ * plus bas, ce drawdown ne peut pas être moins profond que celui des clôtures.
+ *
+ * ⚠️ Il reste une **borne inférieure** : un vrai sommet intra-bougie (le plus
+ * haut de la bougie) le creuserait encore, mais apparier un plus haut et un plus
+ * bas à l'intérieur d'une même bougie supposerait un ordre que l'OHLC ne donne
+ * pas. Lire le sommet à la clôture, c'est ne rien supposer.
+ */
+export function adverseDrawdown(curve: readonly AdversePoint[]): BacktestDrawdown {
+  let peak = 1;
+  let peakTime: number | null = null;
+  let worst: BacktestDrawdown = { depthPercent: 0, peakTime: null, troughTime: null };
+
+  for (const point of curve) {
+    const atWorst = 1 + point.worst / 100;
+    if (atWorst <= 0) {
+      return { depthPercent: 100, peakTime, troughTime: point.time };
+    }
+
+    const depth = ((peak - atWorst) / peak) * 100;
+    if (depth > worst.depthPercent) {
+      worst = { depthPercent: depth, peakTime, troughTime: point.time };
+    }
+
+    const atClose = 1 + point.value / 100;
+    if (atClose >= peak) {
+      peak = atClose;
+      peakTime = point.time;
+    }
+  }
+
+  return worst;
 }
 
 /** Les deux drawdowns sous les noms qu'ils portent dans `BacktestStats`. */

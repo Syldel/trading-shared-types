@@ -738,6 +738,64 @@ describe('buildBacktestReport — intrabar drawdown', () => {
     expect(report.short.maxDrawdownIntrabar.depthPercent).toBeCloseTo(20, 10);
   });
 
+  it('keeps the peak the closes reached, even when a wick dug under it', () => {
+    /**
+     * ⚠️ **Le défaut de la version 0.31.0, vu à l'écran avant d'être vu ici.**
+     *
+     * Le creux et le sommet se lisaient tous deux sur la courbe adverse. Or une
+     * courbe partout plus basse ne donne pas un drawdown plus profond : le creux
+     * se rapporte au sommet de **sa propre** courbe, et une mèche sous la bougie
+     * du sommet abaisse ce sommet autant que le creux. Mesuré sur BTC le
+     * 2026-10-14, le mobile affichait **−2,41 %** d'intra-bougie sous −2,86 % de
+     * close-to-close : l'inverse de ce que la ligne promet.
+     *
+     * Ici : la position est ouverte à 100, la deuxième bougie clôture à 110
+     * après être redescendue à 100, la troisième clôture à 100 après un plus bas
+     * à 95.
+     *
+     * - sur les clôtures : sommet 1,10, creux 1,00 → `0,10 / 1,10 = 9,09 %` ;
+     * - au pire instant, sommet pris à la clôture : `0,15 / 1,10 = 13,64 %` ;
+     * - au pire instant, sommet pris sur la courbe adverse : le sommet retombe à
+     *   1,00 et le creux ne vaut plus que **5 %** — moins que les clôtures.
+     */
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100)],
+      candles: [bar(1, 100), bar(2, 110, 100), bar(3, 100, 95)],
+      from: H,
+    });
+
+    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(9.0909090909, 8);
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBeCloseTo(13.6363636364, 8);
+    // Le sommet nommé est bien celui des clôtures, et non celui de la courbe adverse.
+    expect(report.long.maxDrawdownIntrabar.peakTime).toBe(2 * H);
+  });
+
+  it('refuses a peak the candle only reached after its own low', () => {
+    /**
+     * L'ordre à l'intérieur d'une bougie est inconnu — sauf un : la **clôture
+     * est le dernier instant**. Un sommet posé par cette clôture est donc
+     * postérieur au plus bas de la même bougie, et mesurer la chute depuis lui
+     * décrirait un creux à l'envers.
+     *
+     * Position ouverte à 100, puis une bougie qui descend à 90 et clôture à 120 :
+     *
+     * - creux depuis le sommet d'avant (1,00) : `0,10 / 1,00 = 10 %` ;
+     * - creux depuis la clôture de cette même bougie (1,20) : 25 %, pour une
+     *   chute que le compte n'a pas faite dans ce sens-là.
+     *
+     * Les clôtures, elles, ne voient aucune baisse : la courbe monte de 0 à +20.
+     */
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100)],
+      candles: [bar(1, 100), bar(2, 120, 90)],
+      from: H,
+    });
+
+    expect(report.long.maxDrawdown.depthPercent).toBe(0);
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBeCloseTo(10, 10);
+    expect(report.long.maxDrawdownIntrabar.peakTime).toBe(H);
+  });
+
   it('never reads shallower than the drawdown measured on closes', () => {
     /**
      * L'invariant qui tient tout : la mesure au pire instant ne peut pas
