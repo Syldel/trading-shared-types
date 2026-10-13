@@ -130,7 +130,7 @@ export interface BacktestDrawdown {
   /**
    * Bougie du sommet dont part la pire baisse, ou `null` quand ce sommet est le
    * **début de la fenêtre** : depuis la version 0.30.0 le sommet est planché au
-   * capital intact (voir `relativeDrawdown`), et une courbe qui n'y est jamais
+   * capital intact (voir `measureDrawdowns`), et une courbe qui n'y est jamais
    * remontée n'a donc aucune bougie à ce niveau.
    *
    * ⚠️ `null` ne veut donc **pas** dire « aucune baisse », et accompagne
@@ -148,6 +148,33 @@ export interface BacktestDrawdown {
   peakTime: number | null;
   /** Bougie du creux ; `null` quand la courbe ne baisse jamais. */
   troughTime: number | null;
+}
+
+/**
+ * Où la courbe en est **à son dernier point**, par rapport à son sommet.
+ *
+ * Une autre question que le drawdown maximal, et Freqtrade la pose à part
+ * (« Current drawdown ») : un creux de 25 % refermé il y a six mois ne demande
+ * pas la même décision que le même creux, toujours ouvert. Le maximum seul ne
+ * permet pas de les distinguer — il vaut 25 % dans les deux cas.
+ *
+ * Pas de `troughTime` ici : le point de mesure est la fin de la fenêtre, et
+ * l'appeler « creux » prétendrait que la courbe y a touché son plus bas.
+ */
+export interface BacktestCurrentDrawdown {
+  /** `0` quand le dernier point **est** le sommet. */
+  depthPercent: number;
+  /**
+   * Bougie du sommet sous lequel la courbe se trouve encore ; `null` quand ce
+   * sommet est le début de la fenêtre, comme pour `BacktestDrawdown.peakTime`.
+   * Sans recul (`depthPercent` nul), c'est le dernier point lui-même.
+   */
+  peakTime: number | null;
+}
+
+export interface BacktestDrawdowns {
+  max: BacktestDrawdown;
+  current: BacktestCurrentDrawdown;
 }
 
 export interface BacktestStats {
@@ -172,6 +199,36 @@ export interface BacktestStats {
   unrealizedNetPercent: number;
   /** Sur la courbe à chaque bougie, pertes latentes comprises. */
   maxDrawdown: BacktestDrawdown;
+  /**
+   * Le recul où la courbe se trouve **encore**, à sa dernière bougie.
+   *
+   * Il peut égaler `maxDrawdown` — c'est même le cas quand le pire creux est le
+   * dernier point, donc quand la stratégie est au plus mal au moment où on la
+   * regarde. Sans ce champ, cet état-là est indiscernable d'un creux refermé
+   * depuis longtemps.
+   */
+  currentDrawdown: BacktestCurrentDrawdown;
+  /**
+   * Le même drawdown maximal, mesuré au **pire instant** de chaque bougie : le
+   * plus bas pour un long, le plus haut pour un short.
+   *
+   * TradingView publie les deux côte à côte, et pour une raison qui vaut ici :
+   * un creux traversé puis refermé à l'intérieur d'une bougie est invisible sur
+   * les clôtures, alors que le compte y est bien passé. Mesuré sur nos cinq jeux
+   * de données le 2026-10-13, l'écart allait de 0,76 à 2,79 points sur
+   * l'achat-conservation, toujours dans le même sens.
+   *
+   * ⚠️ **C'est une borne inférieure, pas la vérité.** Le sommet est lu sur cette
+   * même courbe adverse et non sur l'extrême favorable de la bougie : apparier
+   * un plus haut et un plus bas à l'intérieur d'une seule bougie supposerait un
+   * ordre que l'OHLC ne donne pas. Le vrai creux intra-bougie peut donc être
+   * plus profond encore — jamais moins.
+   *
+   * Pas d'équivalent courant : `currentDrawdown` dit où le compte **est**, à la
+   * dernière clôture, et un « où il est au pire instant » ne désignerait aucun
+   * moment présent.
+   */
+  maxDrawdownIntrabar: BacktestDrawdown;
 }
 
 /**
@@ -479,17 +536,54 @@ export function buildBacktestReport({
   const equity: BacktestEquityPoint[] = windowCandles.map((candle) => {
     const long = equityAt('LONG', candle, trades, inWindow, entryFee);
     const short = equityAt('SHORT', candle, trades, inWindow, entryFee);
-    return { time: candle.time, long, short, total: overlapping ? null : long + short };
+    return {
+      time: candle.time,
+      long,
+      short,
+      total: overlapping ? null : long + short,
+    };
+  });
+
+  /**
+   * La même courbe, mais au **pire instant** de chaque bougie : le plus bas pour
+   * un long, le plus haut pour un short. C'est elle qui porte le drawdown
+   * intra-bougie, celui que TradingView publie à côté du close-to-close.
+   *
+   * `Math.min` avec la courbe de clôture parce que la bougie de **sortie** y
+   * échappe autrement : la valeur adverse y compte la position encore ouverte,
+   * donc sans son frais de sortie, et pourrait dépasser la clôture d'un cheveu.
+   * Une courbe « au pire » qui passerait au-dessus de l'autre ne serait plus le
+   * pire de rien.
+   */
+  const adverse: BacktestEquityPoint[] = windowCandles.map((candle, index) => {
+    const closed = equity[index]!;
+    const long = Math.min(closed.long, adverseEquityAt('LONG', candle, trades, inWindow, entryFee));
+    const short = Math.min(
+      closed.short,
+      adverseEquityAt('SHORT', candle, trades, inWindow, entryFee),
+    );
+    return {
+      time: candle.time,
+      long,
+      short,
+      total: overlapping ? null : long + short,
+    };
   });
 
   const statsFor = (side: PositionSide | null): BacktestStats => {
     const sideTrades = trades.filter((t) => side === null || t.side === side);
     const sideOpen = openPositions.filter((p) => side === null || p.side === side);
+    const valueOf = (point: BacktestEquityPoint) =>
+      side === 'LONG' ? point.long : side === 'SHORT' ? point.short : (point.total ?? 0);
     const curve = equity.map((point) => ({
       time: point.time,
-      value: side === 'LONG' ? point.long : side === 'SHORT' ? point.short : (point.total ?? 0),
+      value: valueOf(point),
     }));
-    return summarize(sideTrades, sideOpen, curve);
+    const adverseCurve = adverse.map((point) => ({
+      time: point.time,
+      value: valueOf(point),
+    }));
+    return summarize(sideTrades, sideOpen, curve, adverseCurve);
   };
 
   return {
@@ -607,6 +701,52 @@ function isOpenAt(position: Position, time: number): boolean {
 }
 
 /**
+ * Ouverte **pendant** la bougie, et non à sa clôture — deux bornes différentes
+ * de `isOpenAt`, et c'est tout l'intérêt.
+ *
+ * La bougie d'entrée est exclue : la position s'ouvre à sa clôture (le
+ * simulateur remplit au close du signal), elle n'a donc pas vécu le plus bas qui
+ * l'a précédée. La bougie de sortie est incluse : la position l'a traversée en
+ * entier, et n'est refermée qu'à sa clôture.
+ */
+function isLiveDuring(position: Position, time: number): boolean {
+  return position.entryTime < time && (position.exitTime === null || position.exitTime >= time);
+}
+
+/**
+ * L'équité d'un côté au **pire instant** d'une bougie : le plus bas pour un
+ * long, le plus haut pour un short.
+ *
+ * Aucune hypothèse d'ordre à l'intérieur de la bougie n'est nécessaire, parce
+ * qu'un seul extrême est lu — c'est ce qui sépare ce calcul de la simulation
+ * d'un stop, qui exige de savoir si le plus bas est venu avant le plus haut, ce
+ * qu'une bougie OHLC ne dit pas (voir docs/, « ce que le backtest ne dit pas »).
+ *
+ * Le réalisé s'arrête **avant** cette bougie : un trade qui s'y referme y est
+ * encore une position vivante, comptée à son extrême. Et une position vivante
+ * n'a payé que son entrée — le frais de sortie n'est pas encore dû à l'instant
+ * où la courbe touche son pire point.
+ */
+function adverseEquityAt(
+  side: PositionSide,
+  candle: AnalysisCandle,
+  trades: readonly BacktestTrade[],
+  inWindow: readonly Position[],
+  entryFee: number,
+): number {
+  const realized = trades
+    .filter((t) => t.side === side && t.exitTime < candle.time)
+    .reduce((sum, t) => sum + t.netReturnPercent, 0);
+
+  const extreme = side === 'LONG' ? candle.low : candle.high;
+  const live = inWindow
+    .filter((p) => p.side === side && isLiveDuring(p, candle.time))
+    .reduce((sum, p) => sum + returnPercent(side, p.entryPrice, extreme) - entryFee, 0);
+
+  return realized + live;
+}
+
+/**
  * Chevauchement mesuré sur **toutes** les positions, héritées comprises : une
  * position ouverte avant la fenêtre n'entre pas dans les chiffres, mais elle
  * occupe bien le côté que le bot ne pourrait pas tenir en même temps que l'autre.
@@ -662,6 +802,7 @@ function summarize(
   trades: readonly BacktestTrade[],
   open: readonly BacktestOpenPosition[],
   curve: readonly { time: number; value: number }[],
+  adverseCurve: readonly { time: number; value: number }[],
 ): BacktestStats {
   // Gagnants et perdants comptés **net** : un trade à +0,02 % brut est une
   // perte en taker, et un taux de réussite brut flatterait exactement les
@@ -684,16 +825,34 @@ function summarize(
       open.map((p) => p.unrealizedGrossPercent ?? 0),
     ),
     unrealizedNetPercent: sum(open.map((p) => p.unrealizedNetPercent ?? 0)),
-    maxDrawdown: relativeDrawdown(curve),
+    ...drawdowns(curve),
+    maxDrawdownIntrabar: measureDrawdowns(adverseCurve).max,
   };
 }
 
+/** Les deux drawdowns sous les noms qu'ils portent dans `BacktestStats`. */
+function drawdowns(curve: readonly { time: number; value: number }[]): {
+  maxDrawdown: BacktestDrawdown;
+  currentDrawdown: BacktestCurrentDrawdown;
+} {
+  const measured = measureDrawdowns(curve);
+  return { maxDrawdown: measured.max, currentDrawdown: measured.current };
+}
+
 /**
- * Drawdown maximal relatif : `max(sommet − valeur) / sommet`.
+ * Les deux drawdowns d'une courbe, mesurés en un seul passage : le pire qu'elle
+ * ait traversé, et celui dans lequel elle est **encore**.
  *
- * La courbe est en points de pourcentage cumulés à notionnel fixe ; la valeur de
- * compte est donc `1 + points / 100`, en multiples du capital initial. C'est ce
- * rapport qui porte le dénominateur dont la version précédente manquait.
+ * `max(sommet − valeur) / sommet` pour le premier. La courbe est en points de
+ * pourcentage cumulés à notionnel fixe ; la valeur de compte est donc
+ * `1 + points / 100`, en multiples du capital initial. C'est ce rapport qui
+ * porte le dénominateur dont la version précédente manquait.
+ *
+ * Le second répond à une autre question, et Freqtrade la pose séparément
+ * (« Current drawdown ») : un pire creux de 25 % refermé il y a six mois et le
+ * même, toujours ouvert, ne demandent pas la même décision. Les deux partagent
+ * le sommet courant, d'où une seule fonction — deux passages finiraient par
+ * répondre depuis deux sommets différents.
  *
  * ⚠️ L'hypothèse de notionnel fixe sans réinvestissement est celle de tout ce
  * rapport (voir son en-tête). Avec un autre dimensionnement, la même suite de
@@ -703,10 +862,14 @@ function summarize(
  * ne connaît pas — au premier chef l'achat-conservation, la référence à battre.
  * Deux implémentations d'un même drawdown dériveraient, et c'est arrivé : le
  * harnais de backtest du bot en portait une copie jusqu'au 2026-10-08.
+ *
+ * ⚠️ S'appelait `relativeDrawdown` et ne rendait que le maximum. Renommée avec
+ * le changement de forme : une fonction qui garde son nom en changeant ce
+ * qu'elle rend laisse un appelant lire `undefined` sans rien casser à l'écran.
  */
-export function relativeDrawdown(
+export function measureDrawdowns(
   curve: readonly { time: number; value: number }[],
-): BacktestDrawdown {
+): BacktestDrawdowns {
   /**
    * Le sommet part du **capital intact**, et n'en descend jamais.
    *
@@ -729,7 +892,13 @@ export function relativeDrawdown(
   let peak = 1;
   let peakTime: number | null = null;
 
-  let worst: BacktestDrawdown = { depthPercent: 0, peakTime: null, troughTime: null };
+  let worst: BacktestDrawdown = {
+    depthPercent: 0,
+    peakTime: null,
+    troughTime: null,
+  };
+  // Réécrit à chaque point, donc il décrit le **dernier** quand la boucle sort.
+  let current: BacktestCurrentDrawdown = { depthPercent: 0, peakTime: null };
 
   for (const point of curve) {
     const accountValue = 1 + point.value / 100;
@@ -745,15 +914,20 @@ export function relativeDrawdown(
     }
     if (accountValue <= 0) {
       // Capital épuisé : la perte est totale, et diviser par un sommet positif
-      // décrirait la suite d'une courbe qui ne peut plus exister.
-      return { depthPercent: 100, peakTime, troughTime: point.time };
+      // décrirait la suite d'une courbe qui ne peut plus exister. Le compte est
+      // donc aussi **encore** à −100 % : rien ne l'en sortira.
+      return {
+        max: { depthPercent: 100, peakTime, troughTime: point.time },
+        current: { depthPercent: 100, peakTime },
+      };
     }
 
     const depth = ((peak - accountValue) / peak) * 100;
     if (depth > worst.depthPercent) {
       worst = { depthPercent: depth, peakTime, troughTime: point.time };
     }
+    current = { depthPercent: depth, peakTime };
   }
 
-  return worst;
+  return { max: worst, current };
 }

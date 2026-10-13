@@ -4,7 +4,7 @@ import {
   HYPERLIQUID_FEES,
   buildBacktestReport,
   perpFeePerSide,
-  relativeDrawdown,
+  measureDrawdowns,
 } from './backtest-report.js';
 import type { BacktestReportInput } from './backtest-report.js';
 import type { PositionSide, TimelineSignal } from './strategy-engine.type.js';
@@ -24,6 +24,15 @@ const H = 3_600_000;
  */
 function buildReport(input: Omit<BacktestReportInput, 'feePerSide'>) {
   return buildBacktestReport({ ...input, feePerSide: 0 });
+}
+
+/**
+ * Une bougie horaire avec sa mèche. Le `candles` ci-dessous les fait plates
+ * (haut = bas = clôture), ce qui convient à tout ce qui se lit sur les
+ * clôtures ; le drawdown intra-bougie, lui, ne vit que dans ces mèches.
+ */
+function bar(hour: number, close: number, low = close, high = close): AnalysisCandle {
+  return { time: hour * H, open: close, high, low, close, volume: 1 };
 }
 
 /** Bougies horaires aux clôtures données, la première ouverte à `H`. */
@@ -53,9 +62,17 @@ const exit = (side: PositionSide, hour: number, price: number): TimelineSignal =
 
 describe('buildBacktestReport — trades and returns', () => {
   it('reports an empty strategy as zero trades, no win rate and a flat curve', () => {
-    const report = buildReport({ signals: [], candles: candles(100, 101), from: H });
+    const report = buildReport({
+      signals: [],
+      candles: candles(100, 101),
+      from: H,
+    });
 
-    expect(report.long).toMatchObject({ trades: 0, winRatePercent: null, realizedNetPercent: 0 });
+    expect(report.long).toMatchObject({
+      trades: 0,
+      winRatePercent: null,
+      realizedNetPercent: 0,
+    });
     expect(report.total).toMatchObject({ trades: 0, winRatePercent: null });
     expect(report.equity.map((p) => p.total)).toEqual([0, 0]);
     expect(report.anomalies).toEqual([]);
@@ -80,7 +97,11 @@ describe('buildBacktestReport — trades and returns', () => {
       from: H,
     });
 
-    expect(report.short).toMatchObject({ trades: 1, wins: 1, realizedNetPercent: 10 });
+    expect(report.short).toMatchObject({
+      trades: 1,
+      wins: 1,
+      realizedNetPercent: 10,
+    });
   });
 
   it('separates wins, losses and exactly flat trades', () => {
@@ -97,7 +118,12 @@ describe('buildBacktestReport — trades and returns', () => {
       from: H,
     });
 
-    expect(report.long).toMatchObject({ trades: 3, wins: 1, losses: 1, breakeven: 1 });
+    expect(report.long).toMatchObject({
+      trades: 3,
+      wins: 1,
+      losses: 1,
+      breakeven: 1,
+    });
     expect(report.long.winRatePercent).toBeCloseTo(100 / 3, 10);
   });
 
@@ -146,7 +172,13 @@ describe('buildBacktestReport — reporting window', () => {
     });
 
     expect(report.carriedIn).toEqual([
-      { side: 'LONG', entryTime: H, entryPrice: 100, exitTime: 3 * H, exitPrice: 150 },
+      {
+        side: 'LONG',
+        entryTime: H,
+        entryPrice: 100,
+        exitTime: 3 * H,
+        exitPrice: 150,
+      },
     ]);
     expect(report.trades).toEqual([]);
     expect(report.long.realizedNetPercent).toBe(0);
@@ -161,13 +193,23 @@ describe('buildBacktestReport — reporting window', () => {
     });
 
     expect(report.carriedIn).toEqual([
-      { side: 'SHORT', entryTime: H, entryPrice: 100, exitTime: null, exitPrice: null },
+      {
+        side: 'SHORT',
+        entryTime: H,
+        entryPrice: 100,
+        exitTime: null,
+        exitPrice: null,
+      },
     ]);
     expect(report.openPositions).toEqual([]);
   });
 
   it('reports the window bounds from the candles it covers', () => {
-    const report = buildReport({ signals: [], candles: candles(1, 2, 3), from: 2 * H });
+    const report = buildReport({
+      signals: [],
+      candles: candles(1, 2, 3),
+      from: 2 * H,
+    });
 
     expect(report.from).toBe(2 * H);
     expect(report.to).toBe(3 * H);
@@ -175,7 +217,11 @@ describe('buildBacktestReport — reporting window', () => {
   });
 
   it('has no end and no curve when the window holds no candle', () => {
-    const report = buildReport({ signals: [], candles: candles(1, 2), from: 10 * H });
+    const report = buildReport({
+      signals: [],
+      candles: candles(1, 2),
+      from: 10 * H,
+    });
 
     expect(report.to).toBeNull();
     expect(report.equity).toEqual([]);
@@ -324,7 +370,11 @@ describe('buildBacktestReport — open positions and the curve', () => {
       from: H,
     });
 
-    expect(report.long.maxDrawdown).toEqual({ depthPercent: 0, peakTime: null, troughTime: null });
+    expect(report.long.maxDrawdown).toEqual({
+      depthPercent: 0,
+      peakTime: null,
+      troughTime: null,
+    });
   });
 
   it('books a trade as realized on its exit candle, not also as unrealized', () => {
@@ -421,7 +471,12 @@ describe('buildBacktestReport — anomalies are listed, never absorbed', () => {
   it('lists a signal with an unknown side or an unusable price', () => {
     const report = buildReport({
       signals: [
-        { time: H, signal: 'ENTER', side: 'BOTH', price: 100 } as unknown as TimelineSignal,
+        {
+          time: H,
+          signal: 'ENTER',
+          side: 'BOTH',
+          price: 100,
+        } as unknown as TimelineSignal,
         { time: H, signal: 'ENTER', side: 'LONG', price: 0 },
         { time: H, signal: 'ENTER', side: 'LONG', price: Number.NaN },
       ],
@@ -461,12 +516,12 @@ describe('buildBacktestReport — anomalies are listed, never absorbed', () => {
 });
 
 /**
- * `relativeDrawdown` est exportée pour que la même formule serve aux courbes que
+ * `measureDrawdowns` est exportée pour que la même formule serve aux courbes que
  * le rapport ne connaît pas — l'achat-conservation au premier chef. Elle doit
  * donc être juste sur une courbe **quelconque**, et pas seulement sur celles que
  * `buildBacktestReport` produit, qui commencent toutes à 0 point.
  */
-describe('relativeDrawdown', () => {
+describe('measureDrawdowns', () => {
   const at = (...values: number[]) =>
     values.map((value, index) => ({ time: (index + 1) * H, value }));
 
@@ -485,7 +540,7 @@ describe('relativeDrawdown', () => {
      * `peakTime` vaut `null` ici : le sommet est le début de la fenêtre, pas une
      * bougie. C'est plus exact que de désigner la première bougie venue.
      */
-    const result = relativeDrawdown(at(-10, -20));
+    const result = measureDrawdowns(at(-10, -20)).max;
 
     expect(result.depthPercent).toBeCloseTo(20, 10);
     expect(result.peakTime).toBeNull();
@@ -495,7 +550,7 @@ describe('relativeDrawdown', () => {
   it('still names a candle as the peak when the curve starts whole', () => {
     // Le cas courant ne doit rien perdre : une courbe qui ouvre au capital
     // intact revendique bien ce premier point comme sommet.
-    const result = relativeDrawdown(at(0, -20));
+    const result = measureDrawdowns(at(0, -20)).max;
 
     expect(result.depthPercent).toBeCloseTo(20, 10);
     expect(result.peakTime).toBe(H);
@@ -506,7 +561,7 @@ describe('relativeDrawdown', () => {
     // Valeur de compte négative dès le premier point : la perte est totale, et
     // diviser par un sommet positif décrirait la suite d'une courbe qui ne peut
     // plus exister.
-    expect(relativeDrawdown(at(-120, -110))).toEqual({
+    expect(measureDrawdowns(at(-120, -110)).max).toEqual({
       depthPercent: 100,
       peakTime: null,
       troughTime: H,
@@ -515,7 +570,7 @@ describe('relativeDrawdown', () => {
 
   it('expresses the fall as a share of the peak', () => {
     // +100 points puis +50 : la valeur de compte passe de 2 à 1,5, soit 25 %.
-    const result = relativeDrawdown(at(0, 100, 50));
+    const result = measureDrawdowns(at(0, 100, 50)).max;
 
     expect(result.depthPercent).toBeCloseTo(25, 10);
     expect(result.peakTime).toBe(2 * H);
@@ -531,18 +586,207 @@ describe('relativeDrawdown', () => {
      * première (100 → 0, soit 100), mais plus faible en proportion : 40 %
      * contre 50 %.
      */
-    const result = relativeDrawdown(at(0, 100, 0, 900, 500));
+    const result = measureDrawdowns(at(0, 100, 0, 900, 500)).max;
 
     expect(result.depthPercent).toBeCloseTo(50, 10);
     expect(result.troughTime).toBe(3 * H);
   });
 
   it('is zero on an empty curve', () => {
-    expect(relativeDrawdown([])).toEqual({
+    expect(measureDrawdowns([]).max).toEqual({
       depthPercent: 0,
       peakTime: null,
       troughTime: null,
     });
+  });
+
+  /**
+   * Le second drawdown : celui dans lequel la courbe est **encore**.
+   *
+   * Le maximum seul ne distingue pas un creux refermé d'un creux ouvert — il
+   * vaut 25 % dans les deux cas, et seule la seconde situation demande une
+   * décision aujourd'hui. Freqtrade publie les deux pour cette raison.
+   */
+  it('measures how far the last point still sits below its peak', () => {
+    // Sommet à +100 (valeur 2) en 2 h, dernier point à +50 (valeur 1,5) :
+    // le compte est encore 25 % sous son sommet.
+    const result = measureDrawdowns(at(0, 100, 50)).current;
+
+    expect(result.depthPercent).toBeCloseTo(25, 10);
+    expect(result.peakTime).toBe(2 * H);
+  });
+
+  it('reports no current drawdown when the curve ends on its peak', () => {
+    // Remontée complète : le pire creux reste à 25 %, mais il est refermé.
+    const measured = measureDrawdowns(at(0, 100, 50, 100));
+
+    expect(measured.max.depthPercent).toBeCloseTo(25, 10);
+    expect(measured.current.depthPercent).toBe(0);
+    expect(measured.current.peakTime).toBe(4 * H);
+  });
+
+  it('keeps the two apart when the deepest fall is already behind', () => {
+    /**
+     * Le cas qui justifie le champ : −50 % traversés puis presque entièrement
+     * refermés. Rendre le maximum seul ferait lire une stratégie à terre alors
+     * qu'elle est à 10 % de son sommet.
+     */
+    const measured = measureDrawdowns(at(0, 100, 0, 80));
+
+    expect(measured.max.depthPercent).toBeCloseTo(50, 10);
+    expect(measured.max.troughTime).toBe(3 * H);
+    expect(measured.current.depthPercent).toBeCloseTo(10, 10);
+  });
+
+  it('measures the current fall from the window start, like the maximum', () => {
+    // Courbe jamais remontée au capital intact : `peakTime` à `null` désigne le
+    // début de la fenêtre, exactement comme pour le maximum.
+    const result = measureDrawdowns(at(-10, -20)).current;
+
+    expect(result.depthPercent).toBeCloseTo(20, 10);
+    expect(result.peakTime).toBeNull();
+  });
+
+  it('leaves a wiped account under water, not back at its peak', () => {
+    // Sortie anticipée : sans ce cas, le compte épuisé rendrait un drawdown
+    // courant de 0 — « tout va bien » sur un capital qui n'existe plus.
+    expect(measureDrawdowns(at(-120, -110)).current).toEqual({
+      depthPercent: 100,
+      peakTime: null,
+    });
+  });
+
+  it('is zero on an empty curve, with no peak to name', () => {
+    expect(measureDrawdowns([]).current).toEqual({
+      depthPercent: 0,
+      peakTime: null,
+    });
+  });
+});
+
+/**
+ * ============================================================================
+ * LE DRAWDOWN INTRA-BOUGIE
+ *
+ * Ce que les clôtures ne peuvent pas voir. TradingView publie un « max drawdown
+ * (close-to-close) » **et** un « (intrabar) » précisément parce que le second
+ * est plus profond, toujours.
+ *
+ * Toutes les bougies des autres tests sont plates (`candles`) : le creux y est
+ * donc identique sur les deux mesures, et aucune n'aurait pu éprouver celle-ci.
+ * Ici chaque bougie porte sa mèche (`bar`).
+ * ============================================================================
+ */
+describe('buildBacktestReport — intrabar drawdown', () => {
+  it('sees a dip that the candle had closed back over', () => {
+    /**
+     * Prix identique d'un bout à l'autre, et un plus bas à 90 au milieu : sur
+     * les clôtures, la stratégie n'a jamais rien perdu. Le compte, lui, est
+     * bien passé 10 % sous son sommet.
+     */
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 3, 100)],
+      candles: [bar(1, 100), bar(2, 100, 90), bar(3, 100)],
+      from: H,
+    });
+
+    expect(report.long.maxDrawdown.depthPercent).toBe(0);
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBeCloseTo(10, 10);
+    expect(report.long.maxDrawdownIntrabar.troughTime).toBe(2 * H);
+  });
+
+  it('spares the entry candle, which the position did not live through', () => {
+    /**
+     * La position s'ouvre à la **clôture** du signal — c'est la règle de
+     * remplissage de tout ce rapport. Le plus bas qui l'a précédée dans la même
+     * bougie appartient donc à un compte qui n'était pas encore exposé.
+     * Compter ce 50 ferait lire un creux de 50 % qui n'a jamais eu lieu.
+     */
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100)],
+      candles: [bar(1, 100, 50), bar(2, 100)],
+      from: H,
+    });
+
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBe(0);
+  });
+
+  it('counts the exit candle, which the position lived through to its close', () => {
+    // Symétrique du précédent : la position traverse la bougie entière et n'est
+    // refermée qu'à sa clôture, donc son plus bas la concerne.
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 2, 100)],
+      candles: [bar(1, 100), bar(2, 100, 90)],
+      from: H,
+    });
+
+    expect(report.long.maxDrawdown.depthPercent).toBe(0);
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBeCloseTo(10, 10);
+  });
+
+  it('reads the high against a short, never the low', () => {
+    /**
+     * Une bougie qui monte à 120 et descend à 50 : le short souffre du haut.
+     * Lire le plus bas lui prêterait un gain de 50 % là où il a perdu 20 %.
+     */
+    const report = buildReport({
+      signals: [enter('SHORT', 1, 100), exit('SHORT', 3, 100)],
+      candles: [bar(1, 100), bar(2, 100, 50, 120), bar(3, 100)],
+      from: H,
+    });
+
+    expect(report.short.maxDrawdownIntrabar.depthPercent).toBeCloseTo(20, 10);
+  });
+
+  it('never reads shallower than the drawdown measured on closes', () => {
+    /**
+     * L'invariant qui tient tout : la mesure au pire instant ne peut pas
+     * flatter celle des clôtures.
+     *
+     * Le cas qui l'enfreindrait sans garde est la bougie de **sortie** sur un
+     * prix plat : la position y est encore vivante, donc son frais de sortie
+     * n'est pas encore dû, et la courbe adverse passerait au-dessus de la
+     * courbe de clôture — une courbe « au pire » plus haute que l'autre.
+     */
+    const report = buildBacktestReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 2, 100)],
+      candles: [bar(1, 100), bar(2, 100)],
+      from: H,
+      feePerSide: 0.001,
+    });
+
+    // Aller-retour à 0,1 % par côté sur un prix inchangé : le compte finit à
+    // −0,2 %, et c'est son pire point sur les deux mesures.
+    expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(0.2, 10);
+    expect(report.long.maxDrawdownIntrabar.depthPercent).toBeCloseTo(0.2, 10);
+  });
+
+  it('adds the realized of one side to the worst instant of the other', () => {
+    /**
+     * Pas de chevauchement ici — un seul côté est exposé à la fois —, donc
+     * additionner ne prétend pas que deux malheurs sont simultanés. C'est aussi
+     * pourquoi la question ne se pose jamais : le rapport refuse un total dès
+     * que les deux côtés se chevauchent.
+     *
+     * Le long sort à 95 (−5 points, acquis) ; le short, ouvert à 95, voit 110
+     * dans la dernière bougie : `(95 − 110) / 95 = −15,7894...` points. Le pire
+     * point du compte vaut donc −20,7894... points, soit une valeur de 0,79210
+     * et un creux de **20,7894 %** — que ni l'un ni l'autre des côtés n'atteint
+     * seul.
+     */
+    const report = buildReport({
+      signals: [
+        enter('LONG', 1, 100),
+        exit('LONG', 2, 95),
+        enter('SHORT', 3, 95),
+        exit('SHORT', 4, 95),
+      ],
+      candles: [bar(1, 100), bar(2, 95, 90), bar(3, 95), bar(4, 95, 95, 110)],
+      from: H,
+    });
+
+    expect(report.total?.maxDrawdownIntrabar.depthPercent).toBeCloseTo(20.7894736842, 8);
+    expect(report.total?.maxDrawdownIntrabar.troughTime).toBe(4 * H);
   });
 });
 
@@ -833,7 +1077,11 @@ describe('perpFeePerSide', () => {
     // commute, et déplacer `(1 - referralDiscount)` en tête rend le même
     // nombre au bit près (vérifié). Mutation survivante, prouvée équivalente.
     expect(
-      perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 1, referralDiscount: 0.4 }),
+      perpFeePerSide({
+        baseRatePerSide: BASE,
+        deployerFeeScale: 1,
+        referralDiscount: 0.4,
+      }),
     ).toBeCloseTo(0.00054, 12);
   });
 
@@ -844,7 +1092,10 @@ describe('perpFeePerSide', () => {
      * et ce test est ce qui empêche de l'oublier.
      */
     expect(
-      perpFeePerSide({ baseRatePerSide: HYPERLIQUID_FEES.maker, deployerFeeScale: 1 }),
+      perpFeePerSide({
+        baseRatePerSide: HYPERLIQUID_FEES.maker,
+        deployerFeeScale: 1,
+      }),
     ).toBeCloseTo(HYPERLIQUID_FEES.maker * 2, 12);
   });
 
