@@ -177,6 +177,37 @@ export interface BacktestDrawdowns {
   current: BacktestCurrentDrawdown;
 }
 
+/**
+ * L'achat-conservation sur la **même fenêtre** : acheté à la première clôture,
+ * conservé jusqu'à la dernière.
+ *
+ * « Ne rien faire » est la référence à battre. Une stratégie qui rend moins que
+ * le cours qu'elle suit n'a pas de raison d'exister, et un rendement positif
+ * affiché seul se lit comme un succès — c'est la raison d'être de ce bloc.
+ *
+ * Les mêmes trois drawdowns que la stratégie, calculés par les mêmes fonctions :
+ * comparer deux rendements sans comparer deux risques flatte celui qui en a pris
+ * le plus.
+ *
+ * ⚠️ **Brut de frais, délibérément.** Un hold paie bien un aller-retour, mais ni
+ * TradingView ni Freqtrade ne déduisent quoi que ce soit de leur référence
+ * (« Buy & hold return », `market_change`), et l'écart va dans le sens prudent :
+ * il **avantage la référence**, donc désavantage la stratégie. Au palier de base,
+ * l'aller-retour qu'on lui épargne vaut 0,09 point. L'écran le dit.
+ */
+export interface BacktestHold {
+  /** Rendement en points de pourcentage, de la première à la dernière clôture. */
+  returnPercent: number;
+  maxDrawdown: BacktestDrawdown;
+  currentDrawdown: BacktestCurrentDrawdown;
+  /**
+   * ⚠️ La bougie d'achat est exclue de la mesure adverse, comme la bougie
+   * d'entrée d'une position : le plus bas qui précède l'achat appartient à un
+   * capital qui n'était pas encore exposé.
+   */
+  maxDrawdownIntrabar: BacktestDrawdown;
+}
+
 export interface BacktestStats {
   /** Trades refermés, ouverts dans la fenêtre. */
   trades: number;
@@ -192,6 +223,17 @@ export interface BacktestStats {
    * trades que les frais emportent.
    */
   winRatePercent: number | null;
+  /**
+   * Gain moyen rapporté à la perte moyenne, **frais déduits** — `null` quand un
+   * des deux côtés est vide.
+   *
+   * Le taux de réussite seul ne décide pas : un suiveur de tendance gagne
+   * typiquement 35 à 40 % du temps avec un gros rapport, et une configuration
+   * qui gagne 60 % avec un petit rapport est probablement autre chose, et de
+   * plus fragile. C'est pour ça que la doctrine du bot exige les deux
+   * (`nest-trading-bot/CLAUDE.md`, « Ce qu'un backtest doit rapporter »).
+   */
+  payoffRatio: number | null;
   realizedGrossPercent: number;
   realizedNetPercent: number;
   /** Positions encore ouvertes en fin de fenêtre, à la dernière clôture. */
@@ -248,6 +290,11 @@ export interface BacktestEquityPoint {
   short: number;
   /** `null` quand long et short se chevauchent dans la fenêtre — voir `BacktestReport.total`. */
   total: number | null;
+  /**
+   * L'achat-conservation au même instant, dans la **même unité** : un écran qui
+   * trace les deux courbes n'a donc rien à convertir, ni à recalculer.
+   */
+  hold: number;
 }
 
 export interface BacktestOverlap {
@@ -303,6 +350,25 @@ export interface BacktestReport {
    * résultat qu'il ne peut pas obtenir.
    */
   total: BacktestStats | null;
+  /** `null` quand la fenêtre n'a aucune bougie : il n'y a alors rien à acheter. */
+  hold: BacktestHold | null;
+  /**
+   * Part des bougies de la fenêtre où **au moins une** position est ouverte,
+   * de 0 à 100.
+   *
+   * L'union et non la somme : les deux côtés s'évaluent indépendamment, donc
+   * additionner deux intervalles qui se chevauchent dépasserait 100 %.
+   *
+   * Une stratégie à plat 70 % du temps qui égale l'achat-conservation ne lui est
+   * pas équivalente — elle est bien meilleure en risque, et c'est invisible sans
+   * ce chiffre.
+   *
+   * ⚠️ Les positions **héritées** comptent, alors qu'elles n'entrent dans aucun
+   * autre chiffre du rapport. Même raison que pour `overlap` : ce qui se mesure
+   * ici est du temps exposé, et une position ouverte avant la fenêtre occupe le
+   * compte exactement comme une autre.
+   */
+  exposurePercent: number;
   trades: BacktestTrade[];
   openPositions: BacktestOpenPosition[];
   carriedIn: BacktestCarriedPosition[];
@@ -538,7 +604,9 @@ export function buildBacktestReport({
   const overlap = measureOverlap(positions, windowCandles);
   const overlapping = overlap.candles > 0;
 
-  const equity: BacktestEquityPoint[] = windowCandles.map((candle) => {
+  const holdPoints = holdEquityPoints(windowCandles.map((candle) => candle.close));
+
+  const equity: BacktestEquityPoint[] = windowCandles.map((candle, index) => {
     const long = equityAt('LONG', candle, trades, inWindow, entryFee);
     const short = equityAt('SHORT', candle, trades, inWindow, entryFee);
     return {
@@ -546,6 +614,7 @@ export function buildBacktestReport({
       long,
       short,
       total: overlapping ? null : long + short,
+      hold: holdPoints[index]!,
     };
   });
 
@@ -572,6 +641,7 @@ export function buildBacktestReport({
       long,
       short,
       total: overlapping ? null : long + short,
+      hold: holdPoints[index]!,
     };
   });
 
@@ -602,6 +672,8 @@ export function buildBacktestReport({
     long: statsFor('LONG'),
     short: statsFor('SHORT'),
     total: overlapping ? null : statsFor(null),
+    hold: holdOf(windowCandles, holdPoints),
+    exposurePercent: exposureOf(positions, windowCandles),
     trades,
     openPositions,
     carriedIn,
@@ -828,6 +900,7 @@ function summarize(
     losses,
     breakeven: trades.length - wins - losses,
     winRatePercent: trades.length === 0 ? null : (wins / trades.length) * 100,
+    payoffRatio: payoffRatio(trades.map((t) => t.netReturnPercent)),
     realizedGrossPercent: sum(trades.map((t) => t.grossReturnPercent)),
     realizedNetPercent: sum(trades.map((t) => t.netReturnPercent)),
     unrealizedGrossPercent: sum(
@@ -898,6 +971,107 @@ export function adverseDrawdown(curve: readonly AdversePoint[]): BacktestDrawdow
   }
 
   return worst;
+}
+
+/**
+ * La courbe d'un achat-conservation, dans l'unité de tout ce rapport : des
+ * **points de pourcentage cumulés** depuis la première clôture.
+ *
+ * Exportée, parce que le harnais du bot la calcule aussi — sur des tranches que
+ * le rapport ne connaît pas. Deux implémentations d'une même courbe finissent
+ * par diverger, et celle-ci sert de référence à la stratégie : elles doivent
+ * sortir du même endroit.
+ *
+ * Hypothèse : tout le capital est engagé à la première clôture et jamais
+ * réajusté, ce qui correspond au notionnel fixe de la stratégie.
+ *
+ * @throws si la première clôture est nulle ou négative — un prix pareil n'existe
+ * pas sur un marché, et la division rendrait `Infinity` sans que rien ne le
+ * signale.
+ */
+export function holdEquityPoints(close: readonly number[]): number[] {
+  if (close.length === 0) return [];
+  const first = close[0]!;
+  if (first <= 0) {
+    throw new Error('holdEquityPoints cannot measure a series opening at zero or below.');
+  }
+  return close.map((value) => ((value - first) / first) * 100);
+}
+
+/**
+ * Le bloc d'achat-conservation : rendement et les **mêmes** trois drawdowns que
+ * la stratégie, par les mêmes fonctions.
+ *
+ * Le creux intra-bougie se lit sur le plus bas de chaque bougie — un hold est
+ * long —, **sauf celle de l'achat** : le plus bas qui précède l'achat appartient
+ * à un capital qui n'était pas encore exposé. C'est la règle de la bougie
+ * d'entrée d'une position, appliquée au même titre.
+ */
+function holdOf(
+  windowCandles: readonly AnalysisCandle[],
+  holdPoints: readonly number[],
+): BacktestHold | null {
+  if (windowCandles.length === 0) return null;
+
+  const first = windowCandles[0]!.close;
+  const curve = windowCandles.map((candle, index) => ({
+    time: candle.time,
+    value: holdPoints[index]!,
+  }));
+  const adverseCurve: AdversePoint[] = windowCandles.map((candle, index) => ({
+    time: candle.time,
+    value: holdPoints[index]!,
+    worst: index === 0 ? holdPoints[0]! : ((candle.low - first) / first) * 100,
+  }));
+
+  const drawdowns = measureDrawdowns(curve);
+  return {
+    returnPercent: holdPoints.at(-1)!,
+    maxDrawdown: drawdowns.max,
+    currentDrawdown: drawdowns.current,
+    maxDrawdownIntrabar: adverseDrawdown(adverseCurve),
+  };
+}
+
+/**
+ * La part des bougies où au moins une position est ouverte.
+ *
+ * Mesurée sur **toutes** les positions, héritées comprises — la même règle que
+ * `measureOverlap`, et pour la même raison : une position ouverte avant la
+ * fenêtre n'entre dans aucun chiffre, mais elle occupe bien le compte.
+ */
+function exposureOf(
+  positions: readonly Position[],
+  windowCandles: readonly AnalysisCandle[],
+): number {
+  if (windowCandles.length === 0) return 0;
+
+  const held = windowCandles.filter((candle) =>
+    positions.some((position) => isOpenAt(position, candle.time)),
+  ).length;
+
+  return (held / windowCandles.length) * 100;
+}
+
+/**
+ * Gain moyen rapporté à la perte moyenne.
+ *
+ * `null` quand l'un des deux côtés est vide : sans trade perdant le rapport
+ * serait infini, et l'annoncer comme un chiffre flatterait un échantillon trop
+ * court.
+ *
+ * Exportée pour la même raison que `holdEquityPoints` : le harnais du bot la
+ * calcule sur des séries que le rapport ne voit pas.
+ */
+export function payoffRatio(netReturns: readonly number[]): number | null {
+  const wins = netReturns.filter((value) => value > 0);
+  const losses = netReturns.filter((value) => value < 0);
+  if (wins.length === 0 || losses.length === 0) return null;
+
+  const mean = (values: readonly number[]) =>
+    values.reduce((sum, value) => sum + value, 0) / values.length;
+
+  return mean(wins) / Math.abs(mean(losses));
 }
 
 /** Les deux drawdowns sous les noms qu'ils portent dans `BacktestStats`. */

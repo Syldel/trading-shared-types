@@ -850,6 +850,177 @@ describe('buildBacktestReport — intrabar drawdown', () => {
 
 /**
  * ============================================================================
+ * LA RÉFÉRENCE À BATTRE
+ *
+ * « Ne rien faire » est la référence à battre : une stratégie qui rend moins que
+ * le cours qu'elle suit n'a pas de raison d'exister. Le rapport la porte donc
+ * lui-même, mesurée sur la même fenêtre et avec les mêmes fonctions, plutôt que
+ * de laisser chaque écran la refaire.
+ * ============================================================================
+ */
+describe('buildBacktestReport — buy and hold', () => {
+  it('measures the hold on the window, whatever the strategy did', () => {
+    // Acheté à 100 à la première clôture, revendu à 110 : +10 points, et la
+    // stratégie n'a rien à voir avec ce chiffre.
+    const report = buildReport({
+      signals: [enter('SHORT', 1, 100), exit('SHORT', 2, 110)],
+      candles: candles(100, 110),
+      from: H,
+    });
+
+    expect(report.hold?.returnPercent).toBeCloseTo(10, 10);
+    expect(report.equity.map((p) => p.hold)).toEqual([0, expect.closeTo(10, 10)]);
+    // Le short a perdu pendant que le hold gagnait : c'est tout l'intérêt.
+    expect(report.short.realizedNetPercent).toBeCloseTo(-10, 10);
+  });
+
+  it('gives the hold the same drawdown as the strategy gets', () => {
+    /**
+     * 100 → 120 → 90 : la valeur de compte passe de 1 à 1,20 puis 0,90, soit
+     * `0,30 / 1,20 = 25 %`. Et comme la courbe finit sur son creux, le recul
+     * courant vaut le maximum.
+     */
+    const report = buildReport({ signals: [], candles: candles(100, 120, 90), from: H });
+
+    expect(report.hold?.maxDrawdown.depthPercent).toBeCloseTo(25, 10);
+    expect(report.hold?.maxDrawdown.peakTime).toBe(2 * H);
+    expect(report.hold?.maxDrawdown.troughTime).toBe(3 * H);
+    expect(report.hold?.currentDrawdown.depthPercent).toBeCloseTo(25, 10);
+  });
+
+  it('spares the buying candle, whose low came before the purchase', () => {
+    // L'achat se fait à la **clôture** de la première bougie : son plus bas à 50
+    // appartient à un capital qui n'était pas encore exposé.
+    const report = buildReport({ signals: [], candles: [bar(1, 100, 50), bar(2, 100)], from: H });
+
+    expect(report.hold?.maxDrawdownIntrabar.depthPercent).toBe(0);
+  });
+
+  it('reads the lows of every candle after it', () => {
+    const report = buildReport({ signals: [], candles: [bar(1, 100), bar(2, 100, 90)], from: H });
+
+    expect(report.hold?.maxDrawdown.depthPercent).toBe(0);
+    expect(report.hold?.maxDrawdownIntrabar.depthPercent).toBeCloseTo(10, 10);
+  });
+
+  it('charges the hold no fee, where the strategy pays two', () => {
+    /**
+     * **Décision, pas oubli.** Ni TradingView (« Buy & hold return ») ni
+     * Freqtrade (`market_change`) ne déduisent de frais de leur référence, et
+     * l'écart va dans le sens prudent : il avantage la référence, donc
+     * désavantage la stratégie. L'écran le dit ; ce test empêche qu'on le
+     * « corrige » sans décider.
+     *
+     * Prix plat, aller-retour à 0,1 % par côté : la stratégie finit à −0,2 %, le
+     * hold à zéro pile.
+     */
+    const report = buildBacktestReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 2, 100)],
+      candles: candles(100, 100),
+      from: H,
+      feePerSide: 0.001,
+    });
+
+    expect(report.long.realizedNetPercent).toBeCloseTo(-0.2, 10);
+    expect(report.hold?.returnPercent).toBe(0);
+  });
+
+  it('has nothing to buy on an empty window', () => {
+    expect(buildReport({ signals: [], candles: [], from: H }).hold).toBeNull();
+  });
+});
+
+describe('buildBacktestReport — exposure and payoff', () => {
+  it('counts the candles where a position is open, not the trades', () => {
+    /**
+     * Entrée à la clôture de la bougie 1, sortie à celle de la bougie 3 : la
+     * position est ouverte aux bougies 1 et 2, donc 2 sur 4.
+     *
+     * Une stratégie à plat une bougie sur deux qui égale l'achat-conservation ne
+     * lui est pas équivalente : elle est bien meilleure en risque.
+     */
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 3, 100)],
+      candles: candles(100, 100, 100, 100),
+      from: H,
+    });
+
+    expect(report.exposurePercent).toBeCloseTo(50, 10);
+  });
+
+  it('counts an inherited position, which no other figure does', () => {
+    // Elle n'entre dans aucun chiffre du rapport — mais elle occupe bien le
+    // compte, et c'est du temps exposé. Même règle que pour `overlap`.
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 3, 100)],
+      candles: candles(100, 100, 100, 100),
+      from: 2 * H,
+    });
+
+    expect(report.carriedIn).toHaveLength(1);
+    expect(report.trades).toHaveLength(0);
+    // Fenêtre de 3 bougies (2, 3, 4), position ouverte sur la bougie 2 seule.
+    expect(report.exposurePercent).toBeCloseTo(100 / 3, 10);
+  });
+
+  it('takes the union of both sides, never their sum', () => {
+    // Long et short ouverts sur les mêmes bougies : une somme donnerait 200 %.
+    const report = buildReport({
+      signals: [
+        enter('LONG', 1, 100),
+        enter('SHORT', 1, 100),
+        exit('LONG', 2, 100),
+        exit('SHORT', 2, 100),
+      ],
+      candles: candles(100, 100),
+      from: H,
+    });
+
+    expect(report.exposurePercent).toBeCloseTo(50, 10);
+  });
+
+  it('is zero without a single position', () => {
+    expect(buildReport({ signals: [], candles: candles(100, 100), from: H }).exposurePercent).toBe(
+      0,
+    );
+  });
+
+  it('weighs the average win against the average loss', () => {
+    /**
+     * Le taux de réussite seul ne décide pas : un suiveur de tendance gagne 35 à
+     * 40 % du temps avec un gros rapport. Ici deux trades, +10 % et −5 % :
+     * le rapport vaut 2.
+     */
+    const report = buildReport({
+      signals: [
+        enter('LONG', 1, 100),
+        exit('LONG', 2, 110),
+        enter('LONG', 3, 100),
+        exit('LONG', 4, 95),
+      ],
+      candles: candles(100, 110, 100, 95),
+      from: H,
+    });
+
+    expect(report.long.payoffRatio).toBeCloseTo(2, 10);
+  });
+
+  it('refuses a ratio when one side is empty', () => {
+    // Sans trade perdant le rapport serait infini, et l'annoncer comme un
+    // chiffre flatterait un échantillon trop court.
+    const report = buildReport({
+      signals: [enter('LONG', 1, 100), exit('LONG', 2, 110)],
+      candles: candles(100, 110),
+      from: H,
+    });
+
+    expect(report.long.winRatePercent).toBe(100);
+    expect(report.long.payoffRatio).toBeNull();
+  });
+});
+
+/**
+ * ============================================================================
  * LES FRAIS
  *
  * Le reste du fichier tourne à `feePerSide: 0`, ce qui laisse brut et net
