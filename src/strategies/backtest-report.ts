@@ -128,12 +128,22 @@ export interface BacktestDrawdown {
    */
   depthPercent: number;
   /**
-   * Bougie du sommet dont part la pire baisse. `null` quand il n'y a aucune
-   * baisse, comme `troughTime` : sans drawdown il n'y a pas de couple
-   * sommet/creux.
+   * Bougie du sommet dont part la pire baisse, ou `null` quand ce sommet est le
+   * **début de la fenêtre** : depuis la version 0.30.0 le sommet est planché au
+   * capital intact (voir `relativeDrawdown`), et une courbe qui n'y est jamais
+   * remontée n'a donc aucune bougie à ce niveau.
    *
-   * ⚠️ Avant le 2026-10-08, `null` signifiait « le sommet est le début de la
-   * fenêtre » et pouvait accompagner un `depthPercent` non nul.
+   * ⚠️ `null` ne veut donc **pas** dire « aucune baisse », et accompagne
+   * couramment un `depthPercent` non nul : toute position ouverte sur la
+   * première bougie met la courbe sous le capital intact avant qu'aucun point
+   * ne l'ait valu. Le champ qui répond « y a-t-il eu une baisse » est
+   * `troughTime` ; un appelant qui **affiche** cette borne substitue
+   * `BacktestReport.from` au `null`, sinon un formateur de date la daterait de
+   * 1970.
+   *
+   * Cette lecture a changé deux fois, et un code écrit entre-temps peut porter
+   * l'autre : « début de la fenêtre » avant le 2026-10-08, « aucune baisse »
+   * jusqu'à la version 0.30.0, de nouveau « début de la fenêtre » depuis.
    */
   peakTime: number | null;
   /** Bougie du creux ; `null` quand la courbe ne baisse jamais. */
