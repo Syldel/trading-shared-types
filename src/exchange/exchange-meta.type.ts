@@ -1,10 +1,16 @@
-import type { ChartInterval } from "../chart.type";
-import type { AnchorSource, DistanceUnit, ExitBehavior, OrderExecutionType, TpslType } from "./exchange-config.interface";
-import type { LogicalGroup } from "../strategies/strategy-engine.type";
-import type { FunctionMetadata } from "../strategies/function-registry";
-import type { RuleBuilderGrammar } from "../strategies/rule-builder-grammar";
-import type { TransformMetadata } from "../strategies/transform-registry";
-import type { IndicatorMetadata } from "./indicator-meta.type";
+import type { ChartInterval } from '../chart.type';
+import type {
+  AnchorSource,
+  DistanceUnit,
+  ExitBehavior,
+  OrderExecutionType,
+  TpslType,
+} from './exchange-config.interface';
+import type { LogicalGroup } from '../strategies/strategy-engine.type';
+import type { FunctionMetadata } from '../strategies/function-registry';
+import type { RuleBuilderGrammar } from '../strategies/rule-builder-grammar';
+import type { TransformMetadata } from '../strategies/transform-registry';
+import type { IndicatorMetadata } from './indicator-meta.type';
 
 // ─── STRATEGY FORM SCHEMA ────────────────────────────────────────────────────
 // Ce fichier décrit *comment construire* une stratégie dans une interface.

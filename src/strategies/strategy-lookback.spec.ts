@@ -1,10 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import type {
-  LogicalGroup,
-  Operand,
-  RuleNode,
-  StrategyRules,
-} from './strategy-engine.type.js';
+import type { LogicalGroup, Operand, RuleNode, StrategyRules } from './strategy-engine.type.js';
 import {
   computeOperandLookback,
   computeRuleNodeLookback,

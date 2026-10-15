@@ -1,4 +1,10 @@
-import type { ComparisonCondition, CrossCondition, Operand, RuleNode, TrendCondition } from './strategy-engine.type.js';
+import type {
+  ComparisonCondition,
+  CrossCondition,
+  Operand,
+  RuleNode,
+  TrendCondition,
+} from './strategy-engine.type.js';
 
 /**
  * ============================================================================

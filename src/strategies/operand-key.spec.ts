@@ -88,9 +88,7 @@ describe('buildOperandKey', () => {
       },
     };
 
-    expect(buildOperandKey(operand)).toBe(
-      'transform_zscore_200(transform_slope_20(ema_50))',
-    );
+    expect(buildOperandKey(operand)).toBe('transform_zscore_200(transform_slope_20(ema_50))');
   });
 
   it('builds a key for a "fn" operand from its kind and each arg key, in order', () => {
@@ -125,9 +123,7 @@ describe('buildOperandKey', () => {
       ],
     };
 
-    expect(buildOperandKey(operand)).toBe(
-      'fn_min(fn_max(ema_9,ema_20),price_close)',
-    );
+    expect(buildOperandKey(operand)).toBe('fn_min(fn_max(ema_9,ema_20),price_close)');
   });
 
   it('is deterministic: two structurally identical operands produce the same key', () => {
@@ -161,9 +157,7 @@ describe('buildOperandKey', () => {
       source: { type: 'indicator', name: 'chop', period: 20 },
     };
 
-    const keys = [base, differentKind, differentPeriod, differentSource].map(
-      buildOperandKey,
-    );
+    const keys = [base, differentKind, differentPeriod, differentSource].map(buildOperandKey);
     expect(new Set(keys).size).toBe(4);
   });
 });

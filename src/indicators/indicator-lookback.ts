@@ -27,17 +27,9 @@ import { resolveIndicatorParams } from './indicator-defaults.js';
  * résolue via `resolveIndicatorParams` (mêmes valeurs par défaut que le reste
  * du package), donc jamais dupliquée ici.
  */
-export function getIndicatorOperandLookback(
-  operand: IndicatorRequest | IndicatorOperand,
-): number {
-  const { name, ...rawParams } = operand as { name: IndicatorName } & Record<
-    string,
-    unknown
-  >;
-  const params = resolveIndicatorParams(name, rawParams) as Record<
-    string,
-    number | string
-  >;
+export function getIndicatorOperandLookback(operand: IndicatorRequest | IndicatorOperand): number {
+  const { name, ...rawParams } = operand as { name: IndicatorName } & Record<string, unknown>;
+  const params = resolveIndicatorParams(name, rawParams) as Record<string, number | string>;
 
   switch (name) {
     case 'ema':

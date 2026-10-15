@@ -87,25 +87,18 @@ export const INDICATOR_SUBFIELDS = {
     { name: 's3', label: 'Support 3 (S3)' },
     { name: 's4', label: 'Support 4 (S4)' },
   ],
-} as const satisfies Partial<
-  Record<IndicatorName, readonly IndicatorSubFieldDefinition[]>
->;
+} as const satisfies Partial<Record<IndicatorName, readonly IndicatorSubFieldDefinition[]>>;
 
 /** Indicateurs produisant plusieurs lignes, donc exigeant un `subField`. */
 export type MultiLineIndicatorName = keyof typeof INDICATOR_SUBFIELDS;
 
 /** Vérifie qu'un nom correspond à un indicateur connu du registre. */
 export function isIndicatorName(name: unknown): name is IndicatorName {
-  return (
-    typeof name === 'string' &&
-    (INDICATOR_NAMES as readonly string[]).includes(name)
-  );
+  return typeof name === 'string' && (INDICATOR_NAMES as readonly string[]).includes(name);
 }
 
 /** Vérifie qu'un indicateur produit plusieurs lignes. */
-export function isMultiLineIndicator(
-  name: IndicatorName,
-): name is MultiLineIndicatorName {
+export function isMultiLineIndicator(name: IndicatorName): name is MultiLineIndicatorName {
   return name in INDICATOR_SUBFIELDS;
 }
 
@@ -113,16 +106,12 @@ export function isMultiLineIndicator(
  * Lignes disponibles pour un indicateur (vide si mono-ligne).
  * Utile pour construire dynamiquement les métadonnées d'UI.
  */
-export function getIndicatorSubFields(
-  name: IndicatorName,
-): readonly IndicatorSubFieldDefinition[] {
+export function getIndicatorSubFields(name: IndicatorName): readonly IndicatorSubFieldDefinition[] {
   return isMultiLineIndicator(name) ? INDICATOR_SUBFIELDS[name] : [];
 }
 
 /** Noms des lignes disponibles pour un indicateur (vide si mono-ligne). */
-export function getIndicatorSubFieldNames(
-  name: IndicatorName,
-): readonly string[] {
+export function getIndicatorSubFieldNames(name: IndicatorName): readonly string[] {
   return getIndicatorSubFields(name).map((field) => field.name);
 }
 

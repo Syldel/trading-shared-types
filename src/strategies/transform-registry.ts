@@ -80,15 +80,13 @@ export const TRANSFORM_REGISTRY: { [K in TransformKind]: TransformMetadata } = {
  * (formulaire de règles). Miroir d'`AVAILABLE_INDICATORS_METADATA`
  * (indicator-registry.ts).
  */
-export const AVAILABLE_TRANSFORMS_METADATA: TransformMetadata[] =
-  TRANSFORM_KINDS.map((kind) => TRANSFORM_REGISTRY[kind]);
+export const AVAILABLE_TRANSFORMS_METADATA: TransformMetadata[] = TRANSFORM_KINDS.map(
+  (kind) => TRANSFORM_REGISTRY[kind],
+);
 
 /** Vérifie qu'une valeur correspond à un type de transformation connu. */
 export function isTransformKind(value: unknown): value is TransformKind {
-  return (
-    typeof value === 'string' &&
-    (TRANSFORM_KINDS as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (TRANSFORM_KINDS as readonly string[]).includes(value);
 }
 
 /** Période par défaut d'une transformation, résolue depuis `TRANSFORM_REGISTRY`. */
@@ -101,9 +99,6 @@ export function getDefaultTransformPeriod(kind: TransformKind): number {
  * défaut du registre. Même rôle que `resolveIndicatorParams`
  * (indicator-defaults.ts) pour un `IndicatorOperand`.
  */
-export function resolveTransformPeriod(
-  kind: TransformKind,
-  period?: number | null,
-): number {
+export function resolveTransformPeriod(kind: TransformKind, period?: number | null): number {
   return period ?? getDefaultTransformPeriod(kind);
 }

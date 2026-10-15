@@ -1,4 +1,4 @@
-import type { StrategyRules } from "./strategy-engine.type";
+import type { StrategyRules } from './strategy-engine.type';
 
 /**
  * Requête d'une stratégie dynamique à exécuter (backtest).

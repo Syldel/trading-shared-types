@@ -130,7 +130,12 @@ describe('buildBacktestReport — trades and returns', () => {
   // Additionné, pas composé : +10 % puis −10 % font 0, pas −1 %.
   it('adds returns trade after trade at constant size', () => {
     const report = buildReport({
-      signals: [enter('LONG', 1, 100), exit('LONG', 2, 110), enter('LONG', 3, 100), exit('LONG', 4, 90)],
+      signals: [
+        enter('LONG', 1, 100),
+        exit('LONG', 2, 110),
+        enter('LONG', 3, 100),
+        exit('LONG', 4, 90),
+      ],
       candles: candles(100, 110, 100, 90),
       from: H,
     });
@@ -252,7 +257,11 @@ describe('buildBacktestReport — open positions and the curve', () => {
         unrealizedNetPercent: 4,
       },
     ]);
-    expect(report.long).toMatchObject({ trades: 0, realizedNetPercent: 0, unrealizedNetPercent: 4 });
+    expect(report.long).toMatchObject({
+      trades: 0,
+      realizedNetPercent: 0,
+      unrealizedNetPercent: 4,
+    });
     expect(report.equity.at(-1)?.long).toBe(4);
   });
 
@@ -291,12 +300,7 @@ describe('buildBacktestReport — open positions and the curve', () => {
      * un drawdown. C'est précisément ce qu'écarte la documentation Hyperliquid :
      * « ce n'est pas le drawdown absolu divisé par une valeur de compte ».
      */
-    expect(report.equity.map((p) => p.long)).toEqual([
-      0,
-      10,
-      4,
-      expect.closeTo(7, 10),
-    ]);
+    expect(report.equity.map((p) => p.long)).toEqual([0, 10, 4, expect.closeTo(7, 10)]);
     expect(report.long.maxDrawdown.depthPercent).toBeCloseTo(5.454545, 5);
     expect(report.long.maxDrawdown.peakTime).toBe(2 * H);
     expect(report.long.maxDrawdown.troughTime).toBe(3 * H);
@@ -391,7 +395,12 @@ describe('buildBacktestReport — open positions and the curve', () => {
 describe('buildBacktestReport — long and short together', () => {
   it('adds both sides into a total when they never overlap', () => {
     const report = buildReport({
-      signals: [enter('LONG', 1, 100), exit('LONG', 2, 110), enter('SHORT', 3, 100), exit('SHORT', 4, 95)],
+      signals: [
+        enter('LONG', 1, 100),
+        exit('LONG', 2, 110),
+        enter('SHORT', 3, 100),
+        exit('SHORT', 4, 95),
+      ],
       candles: candles(100, 110, 100, 95),
       from: H,
     });
@@ -405,7 +414,12 @@ describe('buildBacktestReport — long and short together', () => {
   // long et entrer short au même passage. Ce n'est pas un chevauchement.
   it('does not treat a reversal on the same candle as an overlap', () => {
     const report = buildReport({
-      signals: [enter('LONG', 1, 100), exit('LONG', 2, 105), enter('SHORT', 2, 105), exit('SHORT', 3, 100)],
+      signals: [
+        enter('LONG', 1, 100),
+        exit('LONG', 2, 105),
+        enter('SHORT', 2, 105),
+        exit('SHORT', 3, 100),
+      ],
       candles: candles(100, 105, 100),
       from: H,
     });
@@ -418,7 +432,12 @@ describe('buildBacktestReport — long and short together', () => {
   // et un short ouverts ensemble décrit un résultat qu'il ne peut pas obtenir.
   it('refuses a total when long and short are open at the same time', () => {
     const report = buildReport({
-      signals: [enter('LONG', 1, 100), enter('SHORT', 2, 102), exit('SHORT', 3, 100), exit('LONG', 4, 104)],
+      signals: [
+        enter('LONG', 1, 100),
+        enter('SHORT', 2, 102),
+        exit('SHORT', 3, 100),
+        exit('LONG', 4, 104),
+      ],
       candles: candles(100, 102, 100, 104),
       from: H,
     });
@@ -484,7 +503,11 @@ describe('buildBacktestReport — anomalies are listed, never absorbed', () => {
       from: H,
     });
 
-    expect(report.anomalies.map((a) => a.code)).toEqual(['INVALID_SIGNAL', 'INVALID_SIGNAL', 'INVALID_SIGNAL']);
+    expect(report.anomalies.map((a) => a.code)).toEqual([
+      'INVALID_SIGNAL',
+      'INVALID_SIGNAL',
+      'INVALID_SIGNAL',
+    ]);
     expect(report.anomalies[0]?.side).toBeNull();
     expect(report.openPositions).toEqual([]);
   });
@@ -493,7 +516,10 @@ describe('buildBacktestReport — anomalies are listed, never absorbed', () => {
   // rencontreraient jamais : le dire plutôt que calculer à côté.
   it('lists a signal that matches no candle, but still counts it', () => {
     const report = buildReport({
-      signals: [enter('LONG', 1, 100), { time: 2 * H + 1, signal: 'EXIT', side: 'LONG', price: 110 }],
+      signals: [
+        enter('LONG', 1, 100),
+        { time: 2 * H + 1, signal: 'EXIT', side: 'LONG', price: 110 },
+      ],
       candles: candles(100, 110),
       from: H,
     });
@@ -1158,16 +1184,12 @@ describe('buildBacktestReport — fees', () => {
      * taker ne touche pas de rebate.
      */
     for (const feePerSide of [-0.001, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() =>
-        buildBacktestReport({ ...oneTrade(), feePerSide }),
-      ).toThrow(/feePerSide/);
+      expect(() => buildBacktestReport({ ...oneTrade(), feePerSide })).toThrow(/feePerSide/);
     }
   });
 
   it('accepts a zero fee, which is what isolates their cost', () => {
-    expect(() =>
-      buildBacktestReport({ ...oneTrade(), feePerSide: 0 }),
-    ).not.toThrow();
+    expect(() => buildBacktestReport({ ...oneTrade(), feePerSide: 0 })).not.toThrow();
   });
 
   it('echoes the tier it was given, so a reader can name it', () => {
@@ -1237,10 +1259,7 @@ describe('perpFeePerSide', () => {
      * survivante, prouvée équivalente, pas une lacune. Le `<` est gardé parce
      * que c'est ce que la page écrit.
      */
-    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 1 })).toBeCloseTo(
-      0.0009,
-      12,
-    );
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 1 })).toBeCloseTo(0.0009, 12);
   });
 
   it('adds one below the boundary instead of doubling', () => {
@@ -1284,10 +1303,7 @@ describe('perpFeePerSide', () => {
      * sans dépendre de cette coïncidence.
      */
     expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: null })).toBe(BASE);
-    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 0 })).toBeCloseTo(
-      BASE,
-      12,
-    );
+    expect(perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: 0 })).toBeCloseTo(BASE, 12);
   });
 
   it('applies growth mode on top of the deployer scale, not instead of it', () => {
@@ -1333,11 +1349,11 @@ describe('perpFeePerSide', () => {
     // — voir l'en-tête de la fonction.
     expect(() => perpFeePerSide({ baseRatePerSide: -0.0001 })).toThrow(/baseRatePerSide/);
     expect(() => perpFeePerSide({ baseRatePerSide: Number.NaN })).toThrow(/baseRatePerSide/);
-    expect(() =>
-      perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: -1 }),
-    ).toThrow(/deployerFeeScale/);
-    expect(() =>
-      perpFeePerSide({ baseRatePerSide: BASE, referralDiscount: 1.5 }),
-    ).toThrow(/referralDiscount/);
+    expect(() => perpFeePerSide({ baseRatePerSide: BASE, deployerFeeScale: -1 })).toThrow(
+      /deployerFeeScale/,
+    );
+    expect(() => perpFeePerSide({ baseRatePerSide: BASE, referralDiscount: 1.5 })).toThrow(
+      /referralDiscount/,
+    );
   });
 });

@@ -1,9 +1,5 @@
 import type { AnalysisCandle } from '../analysis/analysis-candle.type.js';
-import {
-  POSITION_SIDES,
-  type PositionSide,
-  type TimelineSignal,
-} from './strategy-engine.type.js';
+import { POSITION_SIDES, type PositionSide, type TimelineSignal } from './strategy-engine.type.js';
 
 /**
  * Rapport de backtest d'une stratégie, dérivé de sa timeline et des bougies sur
@@ -573,8 +569,7 @@ export function buildBacktestReport({
       exitTime: p.exitTime,
       exitPrice: p.exitPrice,
       grossReturnPercent: returnPercent(p.side, p.entryPrice, p.exitPrice),
-      netReturnPercent:
-        returnPercent(p.side, p.entryPrice, p.exitPrice) - roundTripFee,
+      netReturnPercent: returnPercent(p.side, p.entryPrice, p.exitPrice) - roundTripFee,
     }))
     .sort((a, b) => a.entryTime - b.entryTime);
 
@@ -832,7 +827,10 @@ function adverseEquityAt(
  * position ouverte avant la fenêtre n'entre pas dans les chiffres, mais elle
  * occupe bien le côté que le bot ne pourrait pas tenir en même temps que l'autre.
  */
-function measureOverlap(positions: readonly Position[], windowCandles: readonly AnalysisCandle[]): BacktestOverlap {
+function measureOverlap(
+  positions: readonly Position[],
+  windowCandles: readonly AnalysisCandle[],
+): BacktestOverlap {
   let count = 0;
   let firstTime: number | null = null;
 
@@ -870,11 +868,7 @@ function equityAt(
 
   const unrealized = inWindow
     .filter((p) => p.side === side && isOpenAt(p, candle.time))
-    .reduce(
-      (sum, p) =>
-        sum + returnPercent(side, p.entryPrice, candle.close) - entryFee,
-      0,
-    );
+    .reduce((sum, p) => sum + returnPercent(side, p.entryPrice, candle.close) - entryFee, 0);
 
   return realized + unrealized;
 }
@@ -891,8 +885,7 @@ function summarize(
   const wins = trades.filter((t) => t.netReturnPercent > 0).length;
   const losses = trades.filter((t) => t.netReturnPercent < 0).length;
 
-  const sum = (values: readonly number[]) =>
-    values.reduce((total, value) => total + value, 0);
+  const sum = (values: readonly number[]) => values.reduce((total, value) => total + value, 0);
 
   return {
     trades: trades.length,
@@ -903,9 +896,7 @@ function summarize(
     payoffRatio: payoffRatio(trades.map((t) => t.netReturnPercent)),
     realizedGrossPercent: sum(trades.map((t) => t.grossReturnPercent)),
     realizedNetPercent: sum(trades.map((t) => t.netReturnPercent)),
-    unrealizedGrossPercent: sum(
-      open.map((p) => p.unrealizedGrossPercent ?? 0),
-    ),
+    unrealizedGrossPercent: sum(open.map((p) => p.unrealizedGrossPercent ?? 0)),
     unrealizedNetPercent: sum(open.map((p) => p.unrealizedNetPercent ?? 0)),
     ...drawdowns(curve),
     maxDrawdownIntrabar: adverseDrawdown(adverseCurve),

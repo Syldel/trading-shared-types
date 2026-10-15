@@ -56,10 +56,7 @@ import {
  * cohérence référentielle d'un opérande `indicator`) : ceux-ci portent sur la
  * forme du nœud lui-même, avant même de savoir si c'est un opérande indicateur.
  */
-import {
-  describeUnsatisfiableComparison,
-  describeUnsatisfiableCross,
-} from './price-bounds.js';
+import { describeUnsatisfiableComparison, describeUnsatisfiableCross } from './price-bounds.js';
 
 export type StrategyStructureIssueCode =
   | 'MISSING_NODE'
@@ -141,9 +138,9 @@ export interface StrategyValidationIssue {
  * pas diverger entre client et serveur sans qu'un rebuild soit déjà
  * nécessaire des deux côtés. Ceux-là restent sûrs à bloquer localement.
  */
-export const CATALOG_DEPENDENT_ISSUE_CODES: ReadonlySet<
+export const CATALOG_DEPENDENT_ISSUE_CODES: ReadonlySet<StrategyValidationIssue['code']> = new Set<
   StrategyValidationIssue['code']
-> = new Set<StrategyValidationIssue['code']>([
+>([
   'UNKNOWN_INDICATOR',
   'MISSING_SUBFIELD',
   'UNKNOWN_SUBFIELD',
@@ -159,9 +156,7 @@ export const CATALOG_DEPENDENT_ISSUE_CODES: ReadonlySet<
  * catalogue runtime doivent rester silencieuses côté client et attendre le
  * verdict de `POST /exchanges/strategies/validate`.
  */
-export function isCatalogDependentIssue(
-  issue: Pick<StrategyValidationIssue, 'code'>,
-): boolean {
+export function isCatalogDependentIssue(issue: Pick<StrategyValidationIssue, 'code'>): boolean {
   return CATALOG_DEPENDENT_ISSUE_CODES.has(issue.code);
 }
 
@@ -169,9 +164,7 @@ export function isCatalogDependentIssue(
 type RawNode = Record<string, unknown> | null | undefined;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : null;
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
 }
 
 /**
@@ -180,17 +173,10 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  * look-ahead en backtest, et hors bornes en fin de série côté moteur (voir
  * StrategyEngineService.resolveOperandValue dans nest-trading-bot).
  */
-function collectOffsetIssue(
-  offset: unknown,
-  path: string,
-): StrategyValidationIssue | null {
+function collectOffsetIssue(offset: unknown, path: string): StrategyValidationIssue | null {
   if (offset === undefined) return null;
 
-  if (
-    typeof offset !== 'number' ||
-    !Number.isInteger(offset) ||
-    offset < 0
-  ) {
+  if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) {
     return {
       path,
       code: 'INVALID_OFFSET',
@@ -298,11 +284,7 @@ export function collectOperandStructureIssues(
     case 'arith': {
       const issues: StrategyValidationIssue[] = [];
 
-      if (
-        !ARITH_OPERATORS.includes(
-          node.operator as (typeof ARITH_OPERATORS)[number],
-        )
-      ) {
+      if (!ARITH_OPERATORS.includes(node.operator as (typeof ARITH_OPERATORS)[number])) {
         issues.push({
           path,
           code: 'UNKNOWN_ARITH_OPERATOR',
@@ -334,9 +316,7 @@ export function collectOperandStructureIssues(
     case 'transform': {
       const issues: StrategyValidationIssue[] = [];
 
-      if (
-        !TRANSFORM_KINDS.includes(node.kind as (typeof TRANSFORM_KINDS)[number])
-      ) {
+      if (!TRANSFORM_KINDS.includes(node.kind as (typeof TRANSFORM_KINDS)[number])) {
         issues.push({
           path,
           code: 'INVALID_TRANSFORM_KIND',
@@ -354,9 +334,7 @@ export function collectOperandStructureIssues(
       // de pertinence, la sortie serait mathématiquement indéterminée.
       if (
         node.period !== undefined &&
-        (typeof node.period !== 'number' ||
-          !Number.isInteger(node.period) ||
-          node.period < 2)
+        (typeof node.period !== 'number' || !Number.isInteger(node.period) || node.period < 2)
       ) {
         issues.push({
           path,
@@ -390,9 +368,7 @@ export function collectOperandStructureIssues(
     case 'fn': {
       const issues: StrategyValidationIssue[] = [];
 
-      const isKnownKind = FUNCTION_KINDS.includes(
-        node.kind as (typeof FUNCTION_KINDS)[number],
-      );
+      const isKnownKind = FUNCTION_KINDS.includes(node.kind as (typeof FUNCTION_KINDS)[number]);
       if (!isKnownKind) {
         issues.push({
           path,
@@ -475,9 +451,7 @@ export function collectRuleTreeIssues(
 ): StrategyValidationIssue[] {
   const current = asRecord(node);
   if (!current) {
-    return [
-      { path, code: 'MISSING_NODE', message: `Missing rule node at ${path}.` },
-    ];
+    return [{ path, code: 'MISSING_NODE', message: `Missing rule node at ${path}.` }];
   }
 
   switch (current.type) {
@@ -517,7 +491,9 @@ export function collectRuleTreeIssues(
     case 'comparison': {
       const issues: StrategyValidationIssue[] = [];
 
-      if (!COMPARISON_OPERATORS.includes(current.operator as (typeof COMPARISON_OPERATORS)[number])) {
+      if (
+        !COMPARISON_OPERATORS.includes(current.operator as (typeof COMPARISON_OPERATORS)[number])
+      ) {
         issues.push({
           path,
           code: 'UNKNOWN_COMPARISON_OPERATOR',
@@ -597,10 +573,7 @@ export function collectRuleTreeIssues(
         });
       }
 
-      return [
-        ...issues,
-        ...collectOperandStructureIssues(current.target, `${path}.target`),
-      ];
+      return [...issues, ...collectOperandStructureIssues(current.target, `${path}.target`)];
     }
 
     case 'not': {
@@ -612,11 +585,7 @@ export function collectRuleTreeIssues(
     case 'cross': {
       const issues: StrategyValidationIssue[] = [];
 
-      if (
-        !CROSS_DIRECTIONS.includes(
-          current.direction as (typeof CROSS_DIRECTIONS)[number],
-        )
-      ) {
+      if (!CROSS_DIRECTIONS.includes(current.direction as (typeof CROSS_DIRECTIONS)[number])) {
         issues.push({
           path,
           code: 'UNKNOWN_CROSS_DIRECTION',
@@ -795,10 +764,7 @@ export function collectDistanceIssues(
  * Même raison que `RETIRED_TRAILING_MODE` : un champ abandonné se refuse
  * bruyamment, il ne se lit pas « au cas où ».
  */
-function collectRetiredEntryFieldIssues(
-  entry: unknown,
-  path: string,
-): StrategyValidationIssue[] {
+function collectRetiredEntryFieldIssues(entry: unknown, path: string): StrategyValidationIssue[] {
   const record = asRecord(entry);
   if (!record || !('atrMultiplier' in record)) return [];
 
@@ -842,9 +808,7 @@ export function collectStrategyRulesIssues(
 
     return [
       ...collectRuleTreeIssues(config.entry, `${path}.${side}.entry`),
-      ...(config.exit
-        ? collectRuleTreeIssues(config.exit, `${path}.${side}.exit`)
-        : []),
+      ...(config.exit ? collectRuleTreeIssues(config.exit, `${path}.${side}.exit`) : []),
     ];
   });
 }
@@ -919,18 +883,13 @@ export function collectExpressionIssues(
       return;
     }
 
-    const operandIssues = collectOperandStructureIssues(
-      expr?.operand,
-      `${itemPath}.operand`,
-    );
+    const operandIssues = collectOperandStructureIssues(expr?.operand, `${itemPath}.operand`);
     if (operandIssues.length > 0) {
       issues.push(...operandIssues);
       return;
     }
 
-    const key = hasId
-      ? (expr.id as string)
-      : buildOperandKey(expr!.operand as Operand);
+    const key = hasId ? (expr.id as string) : buildOperandKey(expr!.operand as Operand);
     const indices = indicesByKey.get(key) ?? [];
     indices.push(index);
     indicesByKey.set(key, indices);
@@ -1038,22 +997,13 @@ export function collectStrategyIssues(
     group.entries.forEach((entry, index) => {
       const entryPath = `${path}.${group.key}.entries[${index}]`;
       issues.push(...collectAnchorIssues(entry?.anchor, `${entryPath}.anchor`));
-      issues.push(
-        ...collectDistanceIssues(entry?.distance, `${entryPath}.distance`),
-      );
+      issues.push(...collectDistanceIssues(entry?.distance, `${entryPath}.distance`));
       issues.push(...collectRetiredEntryFieldIssues(entry, entryPath));
       if (entry?.condition) {
-        issues.push(
-          ...collectRuleTreeIssues(entry.condition, `${entryPath}.condition`),
-        );
+        issues.push(...collectRuleTreeIssues(entry.condition, `${entryPath}.condition`));
       }
       if (group.key === 'protective') {
-        issues.push(
-          ...collectProtectiveEntryIssues(
-            entry as ProtectiveOrderEntry,
-            entryPath,
-          ),
-        );
+        issues.push(...collectProtectiveEntryIssues(entry as ProtectiveOrderEntry, entryPath));
       }
     });
   }
@@ -1062,19 +1012,13 @@ export function collectStrategyIssues(
 }
 
 /** Valide la stratégie attachée à une paire. */
-export function collectPairIssues(
-  pair: IExchangePair,
-): StrategyValidationIssue[] {
+export function collectPairIssues(pair: IExchangePair): StrategyValidationIssue[] {
   return collectStrategyIssues(pair.strategy, `${pair.name}.strategy`);
 }
 
 /** Rend un ensemble d'anomalies lisible sur une seule ligne de log. */
-export function formatStrategyIssues(
-  issues: readonly StrategyValidationIssue[],
-): string {
-  return issues
-    .map((issue) => `[${issue.code}] ${issue.path}: ${issue.message}`)
-    .join(' | ');
+export function formatStrategyIssues(issues: readonly StrategyValidationIssue[]): string {
+  return issues.map((issue) => `[${issue.code}] ${issue.path}: ${issue.message}`).join(' | ');
 }
 
 /**

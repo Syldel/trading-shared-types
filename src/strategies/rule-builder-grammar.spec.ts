@@ -43,9 +43,7 @@ describe('RULE_BUILDER_GRAMMAR', () => {
   });
 
   it('covers every PRICE_FIELDS value', () => {
-    expect(values(RULE_BUILDER_GRAMMAR.priceFields).sort()).toEqual(
-      [...PRICE_FIELDS].sort(),
-    );
+    expect(values(RULE_BUILDER_GRAMMAR.priceFields).sort()).toEqual([...PRICE_FIELDS].sort());
   });
 
   it('covers every TREND_DIRECTIONS value', () => {
@@ -55,9 +53,7 @@ describe('RULE_BUILDER_GRAMMAR', () => {
   });
 
   it('covers every TREND_MODES value', () => {
-    expect(values(RULE_BUILDER_GRAMMAR.trendModes).sort()).toEqual(
-      [...TREND_MODES].sort(),
-    );
+    expect(values(RULE_BUILDER_GRAMMAR.trendModes).sort()).toEqual([...TREND_MODES].sort());
   });
 
   it('covers every CROSS_DIRECTIONS value', () => {
@@ -67,9 +63,7 @@ describe('RULE_BUILDER_GRAMMAR', () => {
   });
 
   it('covers every ARITH_OPERATORS value', () => {
-    expect(values(RULE_BUILDER_GRAMMAR.arithOperators).sort()).toEqual(
-      [...ARITH_OPERATORS].sort(),
-    );
+    expect(values(RULE_BUILDER_GRAMMAR.arithOperators).sort()).toEqual([...ARITH_OPERATORS].sort());
   });
 
   it('gives every option a non-empty label', () => {

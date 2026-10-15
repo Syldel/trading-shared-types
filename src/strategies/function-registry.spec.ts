@@ -8,9 +8,7 @@ import {
 
 describe('FUNCTION_REGISTRY', () => {
   it('has exactly one entry per known function kind, with a matching `kind` field', () => {
-    expect(Object.keys(FUNCTION_REGISTRY).sort()).toEqual(
-      [...FUNCTION_KINDS].sort(),
-    );
+    expect(Object.keys(FUNCTION_REGISTRY).sort()).toEqual([...FUNCTION_KINDS].sort());
     for (const kind of FUNCTION_KINDS) {
       expect(FUNCTION_REGISTRY[kind].kind).toBe(kind);
     }
@@ -26,9 +24,7 @@ describe('FUNCTION_REGISTRY', () => {
 
 describe('AVAILABLE_FUNCTIONS_METADATA', () => {
   it('contains one entry per function kind, in FUNCTION_KINDS order', () => {
-    expect(AVAILABLE_FUNCTIONS_METADATA.map((m) => m.kind)).toEqual([
-      ...FUNCTION_KINDS,
-    ]);
+    expect(AVAILABLE_FUNCTIONS_METADATA.map((m) => m.kind)).toEqual([...FUNCTION_KINDS]);
   });
 });
 

@@ -10,9 +10,7 @@ import {
 
 describe('TRANSFORM_REGISTRY', () => {
   it('has exactly one entry per known transform kind, with a matching `kind` field', () => {
-    expect(Object.keys(TRANSFORM_REGISTRY).sort()).toEqual(
-      [...TRANSFORM_KINDS].sort(),
-    );
+    expect(Object.keys(TRANSFORM_REGISTRY).sort()).toEqual([...TRANSFORM_KINDS].sort());
     for (const kind of TRANSFORM_KINDS) {
       expect(TRANSFORM_REGISTRY[kind].kind).toBe(kind);
     }
@@ -39,9 +37,7 @@ describe('TRANSFORM_REGISTRY', () => {
 
 describe('AVAILABLE_TRANSFORMS_METADATA', () => {
   it('contains one entry per transform kind, in TRANSFORM_KINDS order', () => {
-    expect(AVAILABLE_TRANSFORMS_METADATA.map((m) => m.kind)).toEqual([
-      ...TRANSFORM_KINDS,
-    ]);
+    expect(AVAILABLE_TRANSFORMS_METADATA.map((m) => m.kind)).toEqual([...TRANSFORM_KINDS]);
   });
 });
 
@@ -50,12 +46,9 @@ describe('isTransformKind', () => {
     expect(isTransformKind(kind)).toBe(true);
   });
 
-  it.each([undefined, null, 42, '', 'ZSCORE', 'sma'])(
-    'rejects %p',
-    (value) => {
-      expect(isTransformKind(value)).toBe(false);
-    },
-  );
+  it.each([undefined, null, 42, '', 'ZSCORE', 'sma'])('rejects %p', (value) => {
+    expect(isTransformKind(value)).toBe(false);
+  });
 });
 
 describe('getDefaultTransformPeriod / resolveTransformPeriod', () => {

@@ -1,4 +1,8 @@
-import type { IndicatorMetadata, IndicatorParameter, IndicatorSubField } from '../exchange/indicator-meta.type.js';
+import type {
+  IndicatorMetadata,
+  IndicatorParameter,
+  IndicatorSubField,
+} from '../exchange/indicator-meta.type.js';
 import { getIndicatorSubFields } from './indicator-subfields.js';
 import type { MultiLineIndicatorName } from './indicator-subfields.js';
 import { INDICATOR_NAMES } from './indicator-request.types.js';
@@ -21,17 +25,11 @@ import type { IndicatorName } from './indicator-request.types.js';
  */
 
 /** Ajoute `subFields` uniquement pour un indicateur multi-lignes (jamais un tableau vide pour un mono-ligne). */
-function withSubFields(
-  name: MultiLineIndicatorName,
-): { subFields: readonly IndicatorSubField[] } {
+function withSubFields(name: MultiLineIndicatorName): { subFields: readonly IndicatorSubField[] } {
   return { subFields: getIndicatorSubFields(name) };
 }
 
-function numberParam(
-  name: string,
-  label: string,
-  defaultValue: number,
-): IndicatorParameter {
+function numberParam(name: string, label: string, defaultValue: number): IndicatorParameter {
   return { type: 'number', name, label, defaultValue };
 }
 
@@ -165,20 +163,14 @@ export const INDICATOR_REGISTRY: { [N in IndicatorName]: IndicatorMetadata } = {
     name: 'supertrend',
     label: 'Supertrend',
     overlay: true,
-    parameters: [
-      numberParam('period', 'Period', 10),
-      numberParam('multiplier', 'Multiplier', 3),
-    ],
+    parameters: [numberParam('period', 'Period', 10), numberParam('multiplier', 'Multiplier', 3)],
     ...withSubFields('supertrend'),
   },
   keltner: {
     name: 'keltner',
     label: 'Keltner Channels',
     overlay: true,
-    parameters: [
-      numberParam('period', 'Period', 20),
-      numberParam('multiplier', 'Multiplier', 2),
-    ],
+    parameters: [numberParam('period', 'Period', 20), numberParam('multiplier', 'Multiplier', 2)],
     ...withSubFields('keltner'),
   },
   donchian: {
@@ -217,5 +209,6 @@ export const INDICATOR_REGISTRY: { [N in IndicatorName]: IndicatorMetadata } = {
  * (`src/exchanges/advanced-rules.definition.ts`), recopiant à la main des
  * valeurs déjà présentes dans `INDICATOR_DEFAULTS`.
  */
-export const AVAILABLE_INDICATORS_METADATA: IndicatorMetadata[] =
-  INDICATOR_NAMES.map((name) => INDICATOR_REGISTRY[name]);
+export const AVAILABLE_INDICATORS_METADATA: IndicatorMetadata[] = INDICATOR_NAMES.map(
+  (name) => INDICATOR_REGISTRY[name],
+);

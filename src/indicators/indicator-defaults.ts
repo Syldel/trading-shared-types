@@ -107,10 +107,7 @@ export function buildIndicatorKey(
   params?: Record<string, unknown> | null,
   subField?: string,
 ): string {
-  const resolved = resolveIndicatorParams(name, params) as Record<
-    string,
-    unknown
-  >;
+  const resolved = resolveIndicatorParams(name, params) as Record<string, unknown>;
   const sub = subField ? `_${subField}` : '';
   const parameters = INDICATOR_REGISTRY[name].parameters;
 
@@ -126,9 +123,7 @@ export function buildIndicatorKey(
  * Variante pratique de `buildIndicatorKey` acceptant directement un
  * `IndicatorRequest` ou `IndicatorOperand` (name + params + subField groupés).
  */
-export function buildIndicatorKeyFromOperand(
-  operand: IndicatorRequest | IndicatorOperand,
-): string {
+export function buildIndicatorKeyFromOperand(operand: IndicatorRequest | IndicatorOperand): string {
   const { name, subField, ...params } = operand as {
     name: IndicatorName;
     subField?: string;

@@ -47,21 +47,14 @@ import type { PriceField } from './strategy-engine.type.js';
  * corrompue ferait lever la validation elle-même.
  */
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === 'object' && value !== null
-    ? (value as Record<string, unknown>)
-    : null;
+  return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : null;
 }
 
 /**
  * Les champs qu'un canal de prix borne. `volume` appartient à `PriceField` mais
  * pas à cette liste, et c'est le point : rien ne borne un volume par un prix.
  */
-const BOUNDED_PRICE_FIELDS: readonly PriceField[] = [
-  'open',
-  'high',
-  'low',
-  'close',
-];
+const BOUNDED_PRICE_FIELDS: readonly PriceField[] = ['open', 'high', 'low', 'close'];
 
 /** De quel côté du prix la borne se trouve toujours, à offset égal. */
 type BoundSide = 'above' | 'below';
@@ -76,9 +69,7 @@ type BoundSide = 'above' | 'below';
  * bande qui se franchit (`bb`, `keltner`, `supertrend`) : elles sont faites pour
  * être traversées.
  */
-const PRICE_BOUNDS: Readonly<
-  Record<string, Readonly<Record<string, BoundSide>>>
-> = {
+const PRICE_BOUNDS: Readonly<Record<string, Readonly<Record<string, BoundSide>>>> = {
   donchian: { upper: 'above', lower: 'below' },
 };
 
@@ -95,18 +86,13 @@ function boundOf(record: Record<string, unknown>): PriceBound | null {
   if (!bySubField) return null;
   if (typeof record.subField !== 'string') return null;
   const side = bySubField[record.subField];
-  return side === undefined
-    ? null
-    : { side, label: `${record.name}.${record.subField}` };
+  return side === undefined ? null : { side, label: `${record.name}.${record.subField}` };
 }
 
-function boundedPriceFieldOf(
-  record: Record<string, unknown>,
-): PriceField | null {
+function boundedPriceFieldOf(record: Record<string, unknown>): PriceField | null {
   if (record.type !== 'price') return null;
   const field = record.field;
-  return typeof field === 'string' &&
-    (BOUNDED_PRICE_FIELDS as readonly string[]).includes(field)
+  return typeof field === 'string' && (BOUNDED_PRICE_FIELDS as readonly string[]).includes(field)
     ? (field as PriceField)
     : null;
 }
@@ -134,10 +120,7 @@ function offsetOf(record: Record<string, unknown>): number | null {
  * exigent tous deux cette relation stricte, et leurs symétriques l'exigent dans
  * l'autre sens. Tout se ramène donc ici.
  */
-function whyStrictlyGreaterIsImpossible(
-  left: unknown,
-  right: unknown,
-): string | null {
+function whyStrictlyGreaterIsImpossible(left: unknown, right: unknown): string | null {
   /**
    * **La** garde de forme, et il n'y en a qu'une : les aides ci-dessous
    * reçoivent un `Record` déjà vérifié.

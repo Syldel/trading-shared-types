@@ -1,8 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import {
-  adviseProtection,
-  type ProtectionAdviceCode,
-} from './protection-advice.js';
+import { adviseProtection, type ProtectionAdviceCode } from './protection-advice.js';
 import {
   FOLLOW_MODES,
   type PriceAnchor,
@@ -69,11 +66,9 @@ const allCombinations = (): ProtectiveOrderEntry[] => {
   return out;
 };
 
-const codeOf = (over: Partial<ProtectiveOrderEntry>) =>
-  adviseProtection(entry(over))!.code;
+const codeOf = (over: Partial<ProtectiveOrderEntry>) => adviseProtection(entry(over))!.code;
 
-const levelOf = (over: Partial<ProtectiveOrderEntry>) =>
-  adviseProtection(entry(over))!.level;
+const levelOf = (over: Partial<ProtectiveOrderEntry>) => adviseProtection(entry(over))!.level;
 
 describe('adviseProtection', () => {
   it('covers the 48 combinations without a gap', () => {
@@ -137,9 +132,7 @@ describe('adviseProtection', () => {
 
     it('gives a stop that only loosens its own sentence', () => {
       // Distinct du precedent : ici l'ancre n'y est pour rien, c'est le stop.
-      const advice = adviseProtection(
-        entry({ tpsl: 'sl', followMode: 'WIDEN_ONLY' }),
-      )!;
+      const advice = adviseProtection(entry({ tpsl: 'sl', followMode: 'WIDEN_ONLY' }))!;
 
       expect(advice.level).toBe('runaway');
       expect(advice.code).toBe('STOP_ONLY_LOOSENS');
@@ -183,9 +176,7 @@ describe('adviseProtection', () => {
     });
 
     it('calls a plain ratcheting stop standard too', () => {
-      expect(codeOf({ tpsl: 'sl', followMode: 'TIGHTEN_ONLY' })).toBe(
-        'STOP_RATCHET',
-      );
+      expect(codeOf({ tpsl: 'sl', followMode: 'TIGHTEN_ONLY' })).toBe('STOP_RATCHET');
     });
   });
 
@@ -202,9 +193,7 @@ describe('adviseProtection', () => {
     });
 
     it('says the bound is inert on a fixed protection', () => {
-      const advice = adviseProtection(
-        entry({ followMode: 'FIXED', boundedByEntry: true }),
-      )!;
+      const advice = adviseProtection(entry({ followMode: 'FIXED', boundedByEntry: true }))!;
 
       expect(advice.code).toBe('BOUND_INERT_ON_FIXED');
       expect(advice.level).toBe('legitimate');
@@ -213,18 +202,14 @@ describe('adviseProtection', () => {
 
   describe('ce qui demande de la prudence', () => {
     it('warns that a free stop may loosen', () => {
-      const advice = adviseProtection(
-        entry({ tpsl: 'sl', followMode: 'FREE' }),
-      )!;
+      const advice = adviseProtection(entry({ tpsl: 'sl', followMode: 'FREE' }))!;
 
       expect(advice.level).toBe('caution');
       expect(advice.code).toBe('STOP_MAY_LOOSEN');
     });
 
     it('stops warning once that stop is bounded', () => {
-      expect(
-        levelOf({ tpsl: 'sl', followMode: 'FREE', boundedByEntry: true }),
-      ).toBe('legitimate');
+      expect(levelOf({ tpsl: 'sl', followMode: 'FREE', boundedByEntry: true })).toBe('legitimate');
     });
 
     it('never warns about a target: a target cannot grow the accepted loss', () => {
@@ -251,17 +236,13 @@ describe('adviseProtection', () => {
     });
 
     it('treats a missing anchor as the entry', () => {
-      expect(codeOf({ anchor: undefined, followMode: 'FIXED' })).toBe(
-        'FIXED_ON_ENTRY',
-      );
+      expect(codeOf({ anchor: undefined, followMode: 'FIXED' })).toBe('FIXED_ON_ENTRY');
     });
 
     it('recognises a fixed protection frozen on a live anchor', () => {
       // Ce que `FIXED` rend possible, et qui merite sa propre phrase.
       for (const source of ['MARKET', 'EXPRESSION'] as const) {
-        const advice = adviseProtection(
-          entry({ anchor: anchorOf(source), followMode: 'FIXED' }),
-        )!;
+        const advice = adviseProtection(entry({ anchor: anchorOf(source), followMode: 'FIXED' }))!;
 
         expect(advice.code).toBe('FIXED_ON_LIVE_ANCHOR');
         expect(advice.message).toContain('on entry');
@@ -278,9 +259,7 @@ describe('adviseProtection', () => {
           followMode: 'WIDEN_ONLY',
         }),
       )!;
-      const widening = adviseProtection(
-        entry({ tpsl: 'tp', followMode: 'WIDEN_ONLY' }),
-      )!;
+      const widening = adviseProtection(entry({ tpsl: 'tp', followMode: 'WIDEN_ONLY' }))!;
 
       expect(runner.code).toBe('TARGET_RUNS_WITH_ANCHOR');
       expect(runner.message).toContain('lags the price');
@@ -291,9 +270,9 @@ describe('adviseProtection', () => {
 
     it('separates a bounded free target from an unbounded one', () => {
       expect(codeOf({ tpsl: 'tp', followMode: 'FREE' })).toBe('TARGET_FREE');
-      expect(
-        codeOf({ tpsl: 'tp', followMode: 'FREE', boundedByEntry: true }),
-      ).toBe('TARGET_FREE_BOUNDED');
+      expect(codeOf({ tpsl: 'tp', followMode: 'FREE', boundedByEntry: true })).toBe(
+        'TARGET_FREE_BOUNDED',
+      );
     });
   });
 

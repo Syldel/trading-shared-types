@@ -32,10 +32,7 @@ export function computeOperandLookback(operand: Operand): number {
     // Les deux branches sont évaluées à la même bougie : le lookback est
     // dicté par la branche la plus exigeante, pas par leur somme.
     case 'arith':
-      return Math.max(
-        computeOperandLookback(operand.left),
-        computeOperandLookback(operand.right),
-      );
+      return Math.max(computeOperandLookback(operand.left), computeOperandLookback(operand.right));
 
     // La fenêtre glissante de la transformation s'ajoute au warm-up de sa
     // propre source : une transformation ne "voit" une série stable qu'une
@@ -61,10 +58,7 @@ export function computeRuleNodeLookback(node: RuleNode): number {
       return Math.max(0, ...node.conditions.map(computeRuleNodeLookback));
 
     case 'comparison':
-      return Math.max(
-        computeOperandLookback(node.left),
-        computeOperandLookback(node.right),
-      );
+      return Math.max(computeOperandLookback(node.left), computeOperandLookback(node.right));
 
     // La fenêtre de tendance s'ajoute au warm-up de sa cible : chaque pas de
     // la fenêtre exige sa propre valeur résolue, pas seulement la dernière.
@@ -77,12 +71,7 @@ export function computeRuleNodeLookback(node: RuleNode): number {
     // Un croisement compare la bougie courante à la précédente : une bougie
     // de plus que le warm-up des opérandes comparés eux-mêmes.
     case 'cross':
-      return (
-        Math.max(
-          computeOperandLookback(node.left),
-          computeOperandLookback(node.right),
-        ) + 1
-      );
+      return Math.max(computeOperandLookback(node.left), computeOperandLookback(node.right)) + 1;
 
     case 'constant':
       return 0;
@@ -95,9 +84,7 @@ export function computeRuleNodeLookback(node: RuleNode): number {
  * `collectStrategyRulesIssues` : une stratégie partielle ou absente renvoie 0
  * plutôt que d'échouer.
  */
-export function computeStrategyRulesLookback(
-  rules: StrategyRules | undefined | null,
-): number {
+export function computeStrategyRulesLookback(rules: StrategyRules | undefined | null): number {
   if (!rules) return 0;
 
   const nodes: RuleNode[] = [];

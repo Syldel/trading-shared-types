@@ -1,4 +1,4 @@
-import type { IndicatorOperand } from "../indicators/indicator-request.types";
+import type { IndicatorOperand } from '../indicators/indicator-request.types';
 
 /**
  * Valeurs valides des unions de l'AST, exposées comme constantes runtime
@@ -6,10 +6,10 @@ import type { IndicatorOperand } from "../indicators/indicator-request.types";
  * typage et à la validation structurelle (`strategy-validation.ts`).
  */
 export const PRICE_FIELDS = ['open', 'high', 'low', 'close', 'volume'] as const;
-export type PriceField = typeof PRICE_FIELDS[number];
+export type PriceField = (typeof PRICE_FIELDS)[number];
 
 export const ARITH_OPERATORS = ['ADD', 'SUB', 'MUL', 'DIV'] as const;
-export type ArithOperator = typeof ARITH_OPERATORS[number];
+export type ArithOperator = (typeof ARITH_OPERATORS)[number];
 
 /**
  * Transformations glissantes applicables à la série produite par n'importe
@@ -19,7 +19,7 @@ export type ArithOperator = typeof ARITH_OPERATORS[number];
  * même esprit que `ARITH_OPERATORS` ci-dessus.
  */
 export const TRANSFORM_KINDS = ['zscore', 'percentile', 'ratioToMa', 'slope'] as const;
-export type TransformKind = typeof TRANSFORM_KINDS[number];
+export type TransformKind = (typeof TRANSFORM_KINDS)[number];
 
 /**
  * Fonctions combinatoires appliquées à plusieurs opérandes au même index de
@@ -29,7 +29,7 @@ export type TransformKind = typeof TRANSFORM_KINDS[number];
  * esprit que `TRANSFORM_KINDS`/`TRANSFORM_REGISTRY`.
  */
 export const FUNCTION_KINDS = ['min', 'max'] as const;
-export type FunctionKind = typeof FUNCTION_KINDS[number];
+export type FunctionKind = (typeof FUNCTION_KINDS)[number];
 
 /**
  * `arith` combine récursivement deux opérandes (ex: `ema20 + atr14 * 2`,
@@ -69,10 +69,10 @@ export type Operand =
   | { type: 'fn'; kind: FunctionKind; args: Operand[] };
 
 export const COMPARISON_OPERATORS = ['GT', 'GTE', 'LT', 'LTE', 'EQ'] as const;
-export type ComparisonOperator = typeof COMPARISON_OPERATORS[number];
+export type ComparisonOperator = (typeof COMPARISON_OPERATORS)[number];
 
 export const LOGICAL_OPERATORS = ['AND', 'OR'] as const;
-export type LogicalOperator = typeof LOGICAL_OPERATORS[number];
+export type LogicalOperator = (typeof LOGICAL_OPERATORS)[number];
 
 // Une condition de comparaison pure (ex: EMA9 > SMA20)
 export interface ComparisonCondition {
@@ -135,7 +135,7 @@ export type StrategySettingValue = number | boolean | string;
 export type StrategySettings = Record<string, StrategySettingValue>;
 
 export const POSITION_SIDES = ['LONG', 'SHORT'] as const;
-export type PositionSide = typeof POSITION_SIDES[number];
+export type PositionSide = (typeof POSITION_SIDES)[number];
 
 /**
  * Un évènement de la timeline d'une stratégie : l'ouverture ou la fermeture
@@ -159,7 +159,7 @@ export interface TimelineSignal {
 }
 
 export const TREND_DIRECTIONS = ['UP', 'DOWN'] as const;
-export type TrendDirection = typeof TREND_DIRECTIONS[number];
+export type TrendDirection = (typeof TREND_DIRECTIONS)[number];
 
 /**
  * `STRICT` (défaut, comportement historique) : chaque pas de la fenêtre doit
@@ -169,7 +169,7 @@ export type TrendDirection = typeof TREND_DIRECTIONS[number];
  * les deux extrémités de la fenêtre (valeur actuelle vs valeur à `t-period`).
  */
 export const TREND_MODES = ['STRICT', 'SOFT', 'NET'] as const;
-export type TrendMode = typeof TREND_MODES[number];
+export type TrendMode = (typeof TREND_MODES)[number];
 
 export interface TrendCondition {
   type: 'trend';
@@ -189,7 +189,7 @@ export interface NotCondition {
 }
 
 export const CROSS_DIRECTIONS = ['UP', 'DOWN', 'ANY'] as const;
-export type CrossDirection = typeof CROSS_DIRECTIONS[number];
+export type CrossDirection = (typeof CROSS_DIRECTIONS)[number];
 
 /**
  * Détecte un croisement entre deux opérandes entre la bougie précédente et

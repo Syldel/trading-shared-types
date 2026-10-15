@@ -1,10 +1,10 @@
-import type { ChartInterval } from "../chart.type";
-import type { IndicatorRequest } from "../indicators/indicator-request.types";
-import type { IndicatorSeriesType, SimpleSeriesPoint } from "../indicators/indicator-series.types";
-import type { BacktestReport } from "../strategies/backtest-report";
-import type { Operand, TimelineSignal } from "../strategies/strategy-engine.type";
-import type { AnalysisStrategyRequest } from "../strategies/strategy.types";
-import type { AnalysisCandle } from "./analysis-candle.type";
+import type { ChartInterval } from '../chart.type';
+import type { IndicatorRequest } from '../indicators/indicator-request.types';
+import type { IndicatorSeriesType, SimpleSeriesPoint } from '../indicators/indicator-series.types';
+import type { BacktestReport } from '../strategies/backtest-report';
+import type { Operand, TimelineSignal } from '../strategies/strategy-engine.type';
+import type { AnalysisStrategyRequest } from '../strategies/strategy.types';
+import type { AnalysisCandle } from './analysis-candle.type';
 
 /**
  * Une expression à calculer pour l'affichage chart (Chart UI) : n'importe
@@ -57,6 +57,6 @@ export interface AnalysisResponse {
   /** Clé = `id` fourni par la requête, sinon `buildOperandKey(operand)`. */
   expressions: Record<string, SimpleSeriesPoint[]>;
   summary: {
-    lastClose: number | null
+    lastClose: number | null;
   };
 }

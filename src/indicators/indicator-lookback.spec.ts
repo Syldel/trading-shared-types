@@ -22,16 +22,12 @@ describe('getIndicatorOperandLookback', () => {
   });
 
   it('honors a custom "period" over the registry default', () => {
-    expect(
-      getIndicatorOperandLookback({ name: 'ema', period: 200 } as IndicatorOperand),
-    ).toBe(200);
+    expect(getIndicatorOperandLookback({ name: 'ema', period: 200 } as IndicatorOperand)).toBe(200);
   });
 
   it('doubles "period" for adx (DX then ADX itself smoothed)', () => {
     expect(getIndicatorOperandLookback({ name: 'adx' } as IndicatorOperand)).toBe(28);
-    expect(
-      getIndicatorOperandLookback({ name: 'adx', period: 20 } as IndicatorOperand),
-    ).toBe(40);
+    expect(getIndicatorOperandLookback({ name: 'adx', period: 20 } as IndicatorOperand)).toBe(40);
   });
 
   it('has no fixed warm-up for obv (cumulative from the first candle)', () => {

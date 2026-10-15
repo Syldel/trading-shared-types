@@ -43,10 +43,7 @@ describe('walkRuleTree', () => {
     const onOperand = jest.fn();
     const onMalformed = jest.fn();
 
-    walkRuleTree(
-      { type: 'logical', operator: 'AND', conditions: [] },
-      { onOperand, onMalformed },
-    );
+    walkRuleTree({ type: 'logical', operator: 'AND', conditions: [] }, { onOperand, onMalformed });
 
     expect(onOperand).not.toHaveBeenCalled();
     expect(onMalformed).not.toHaveBeenCalled();
@@ -85,9 +82,7 @@ describe('walkRuleTree', () => {
   it('reports UNKNOWN_NODE_TYPE for a missing/null node without throwing', () => {
     const onMalformed = jest.fn();
 
-    expect(() =>
-      walkRuleTree(undefined as unknown as RuleNode, { onMalformed }),
-    ).not.toThrow();
+    expect(() => walkRuleTree(undefined as unknown as RuleNode, { onMalformed })).not.toThrow();
 
     expect(onMalformed).toHaveBeenCalledWith({
       reason: 'UNKNOWN_NODE_TYPE',
@@ -100,10 +95,11 @@ describe('walkRuleTree', () => {
     const onOperand = jest.fn();
     const onMalformed = jest.fn();
 
-    walkRuleTree(
-      { type: 'logical', operator: 'AND', conditions: null } as unknown as RuleNode,
-      { onNode, onOperand, onMalformed },
-    );
+    walkRuleTree({ type: 'logical', operator: 'AND', conditions: null } as unknown as RuleNode, {
+      onNode,
+      onOperand,
+      onMalformed,
+    });
 
     // `onNode` et `onMalformed` sont mutuellement exclusifs pour un même
     // nœud : un visiteur qui suppose `conditions` toujours tableau dans

@@ -49,13 +49,11 @@ export const FUNCTION_REGISTRY: { [K in FunctionKind]: FunctionMetadata } = {
  * Catalogue de métadonnées fonctions, tel qu'exposé aux clients (formulaire
  * de règles). Miroir d'`AVAILABLE_TRANSFORMS_METADATA` (transform-registry.ts).
  */
-export const AVAILABLE_FUNCTIONS_METADATA: FunctionMetadata[] =
-  FUNCTION_KINDS.map((kind) => FUNCTION_REGISTRY[kind]);
+export const AVAILABLE_FUNCTIONS_METADATA: FunctionMetadata[] = FUNCTION_KINDS.map(
+  (kind) => FUNCTION_REGISTRY[kind],
+);
 
 /** Vérifie qu'une valeur correspond à un type de fonction connu. */
 export function isFunctionKind(value: unknown): value is FunctionKind {
-  return (
-    typeof value === 'string' &&
-    (FUNCTION_KINDS as readonly string[]).includes(value)
-  );
+  return typeof value === 'string' && (FUNCTION_KINDS as readonly string[]).includes(value);
 }

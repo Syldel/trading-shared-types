@@ -1,8 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
-import {
-  getIndicatorSubFieldNames,
-  INDICATOR_SUBFIELDS,
-} from './indicator-subfields.js';
+import { getIndicatorSubFieldNames, INDICATOR_SUBFIELDS } from './indicator-subfields.js';
 import { validateIndicatorOperand } from './indicator-operand-validation.js';
 
 describe('validateIndicatorOperand', () => {
@@ -19,14 +16,11 @@ describe('validateIndicatorOperand', () => {
   // C'est le cas qui motive tout le dispositif : sans subField, `adx` peut
   // désigner 3 lignes différentes. Choisir la première produirait une valeur
   // plausible mais arbitraire, donc une erreur invisible.
-  it.each(Object.keys(INDICATOR_SUBFIELDS))(
-    'rejects "%s" when the subField is missing',
-    (name) => {
-      const issue = validateIndicatorOperand({ name });
-      expect(issue?.code).toBe('MISSING_SUBFIELD');
-      expect(issue?.allowed).toEqual(getIndicatorSubFieldNames(name as never));
-    },
-  );
+  it.each(Object.keys(INDICATOR_SUBFIELDS))('rejects "%s" when the subField is missing', (name) => {
+    const issue = validateIndicatorOperand({ name });
+    expect(issue?.code).toBe('MISSING_SUBFIELD');
+    expect(issue?.allowed).toEqual(getIndicatorSubFieldNames(name as never));
+  });
 
   it('rejects a subField that belongs to another indicator', () => {
     // 'signal' existe sur macd, pas sur adx : l'ancienne allowlist globale

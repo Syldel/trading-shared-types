@@ -258,21 +258,18 @@ describe('collectRuleTreeIssues', () => {
       expect(issues.map((i) => i.code)).toContain('INVALID_PRICE_FIELD');
     });
 
-    it.each([-1, 1.5, 'foo', NaN])(
-      'rejects an invalid price offset (%p)',
-      (offset) => {
-        const issues = collectRuleTreeIssues(
-          {
-            type: 'comparison',
-            operator: 'GT',
-            left: { type: 'price', field: 'close', offset },
-            right: { type: 'number', value: 1 },
-          },
-          'entry',
-        );
-        expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
-      },
-    );
+    it.each([-1, 1.5, 'foo', NaN])('rejects an invalid price offset (%p)', (offset) => {
+      const issues = collectRuleTreeIssues(
+        {
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'price', field: 'close', offset },
+          right: { type: 'number', value: 1 },
+        },
+        'entry',
+      );
+      expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
+    });
 
     it('accepts an explicit zero or positive integer price offset', () => {
       for (const offset of [0, 1, 20]) {
@@ -286,21 +283,18 @@ describe('collectRuleTreeIssues', () => {
       }
     });
 
-    it.each([-1, 1.5, 'foo'])(
-      'rejects an invalid indicator offset (%p)',
-      (offset) => {
-        const issues = collectRuleTreeIssues(
-          {
-            type: 'comparison',
-            operator: 'GT',
-            left: { type: 'indicator', name: 'ema', period: 9, offset },
-            right: { type: 'number', value: 1 },
-          },
-          'entry',
-        );
-        expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
-      },
-    );
+    it.each([-1, 1.5, 'foo'])('rejects an invalid indicator offset (%p)', (offset) => {
+      const issues = collectRuleTreeIssues(
+        {
+          type: 'comparison',
+          operator: 'GT',
+          left: { type: 'indicator', name: 'ema', period: 9, offset },
+          right: { type: 'number', value: 1 },
+        },
+        'entry',
+      );
+      expect(issues.map((i) => i.code)).toContain('INVALID_OFFSET');
+    });
 
     it('accepts an explicit zero or positive integer indicator offset', () => {
       const issues = collectRuleTreeIssues({
@@ -341,21 +335,18 @@ describe('collectRuleTreeIssues', () => {
     // Un `period` <= 0 rendrait la boucle du moteur vacuously true : la
     // condition serait toujours vraie. Voir StrategyEngineService.evaluateNode
     // dans nest-trading-bot.
-    it.each([0, -1, 1.5, undefined])(
-      'rejects an invalid trend period (%p)',
-      (period) => {
-        const issues = collectRuleTreeIssues(
-          {
-            type: 'trend',
-            direction: 'UP',
-            period,
-            target: { type: 'price', field: 'close' },
-          },
-          'entry',
-        );
-        expect(issues.map((i) => i.code)).toContain('INVALID_TREND_PERIOD');
-      },
-    );
+    it.each([0, -1, 1.5, undefined])('rejects an invalid trend period (%p)', (period) => {
+      const issues = collectRuleTreeIssues(
+        {
+          type: 'trend',
+          direction: 'UP',
+          period,
+          target: { type: 'price', field: 'close' },
+        },
+        'entry',
+      );
+      expect(issues.map((i) => i.code)).toContain('INVALID_TREND_PERIOD');
+    });
 
     it('accepts an absent trend mode (defaults to STRICT) and each explicit mode', () => {
       for (const mode of [undefined, 'STRICT', 'SOFT', 'NET']) {
@@ -452,10 +443,7 @@ describe('collectRuleTreeIssues', () => {
           },
           'entry',
         );
-        expect(issues.map((i) => i.path)).toEqual([
-          'entry.left',
-          'entry.right',
-        ]);
+        expect(issues.map((i) => i.path)).toEqual(['entry.left', 'entry.right']);
       });
 
       it('accepts a well-formed cross node', () => {
@@ -470,22 +458,16 @@ describe('collectRuleTreeIssues', () => {
     });
 
     describe('"constant" node', () => {
-      it.each([undefined, 'true', 1, null])(
-        'rejects a non-boolean value (%p)',
-        (value) => {
-          const issues = collectRuleTreeIssues(
-            { type: 'constant', value },
-            'entry',
-          );
-          expect(issues).toEqual([
-            {
-              path: 'entry',
-              code: 'INVALID_CONSTANT_VALUE',
-              message: expect.any(String),
-            },
-          ]);
-        },
-      );
+      it.each([undefined, 'true', 1, null])('rejects a non-boolean value (%p)', (value) => {
+        const issues = collectRuleTreeIssues({ type: 'constant', value }, 'entry');
+        expect(issues).toEqual([
+          {
+            path: 'entry',
+            code: 'INVALID_CONSTANT_VALUE',
+            message: expect.any(String),
+          },
+        ]);
+      });
 
       it.each([true, false])('accepts a boolean value (%p)', (value) => {
         expect(collectRuleTreeIssues({ type: 'constant', value })).toEqual([]);
@@ -731,21 +713,21 @@ describe('collectRuleTreeIssues', () => {
         expect(issues.map((i) => i.code)).toContain('INVALID_FN_KIND');
       });
 
-      it.each([
-        { args: [] },
-        { args: [{ type: 'number', value: 1 }] },
-      ])('rejects "max" with fewer than 2 args (%#)', ({ args }) => {
-        const issues = collectRuleTreeIssues(
-          {
-            type: 'comparison',
-            operator: 'GT',
-            left: { type: 'price', field: 'close' },
-            right: { type: 'fn', kind: 'max', args },
-          },
-          'entry',
-        );
-        expect(issues.map((i) => i.code)).toContain('INVALID_FN_ARITY');
-      });
+      it.each([{ args: [] }, { args: [{ type: 'number', value: 1 }] }])(
+        'rejects "max" with fewer than 2 args (%#)',
+        ({ args }) => {
+          const issues = collectRuleTreeIssues(
+            {
+              type: 'comparison',
+              operator: 'GT',
+              left: { type: 'price', field: 'close' },
+              right: { type: 'fn', kind: 'max', args },
+            },
+            'entry',
+          );
+          expect(issues.map((i) => i.code)).toContain('INVALID_FN_ARITY');
+        },
+      );
 
       it('rejects "max" whose "args" is not an array', () => {
         const issues = collectRuleTreeIssues(
@@ -993,12 +975,10 @@ describe('collectPairIssues', () => {
 
     expect(issues).toHaveLength(1);
     expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
-    expect(issues[0]!.path).toBe(
-      'BTC.strategy.protective.entries[0].anchor.expression',
-    );
+    expect(issues[0]!.path).toBe('BTC.strategy.protective.entries[0].anchor.expression');
   });
 
-  describe('le mode de suivi d\'une protection', () => {
+  describe("le mode de suivi d'une protection", () => {
     const protectiveWith = (extra: Record<string, unknown>) =>
       pairWith({
         name: 'Advanced',
@@ -1018,9 +998,7 @@ describe('collectPairIssues', () => {
       });
 
     it.each(FOLLOW_MODES)('accepts %s', (mode) => {
-      expect(collectPairIssues(protectiveWith({ followMode: mode }))).toEqual(
-        [],
-      );
+      expect(collectPairIssues(protectiveWith({ followMode: mode }))).toEqual([]);
     });
 
     it('accepts an entry that names no mode at all', () => {
@@ -1032,22 +1010,16 @@ describe('collectPairIssues', () => {
     it('refuses an unknown mode rather than falling back on the default', () => {
       // Retomber sur FIXED poserait un stop immobile la ou la configuration en
       // demandait un qui suit, et personne ne l'apprendrait.
-      const issues = collectPairIssues(
-        protectiveWith({ followMode: 'TRAILING' }),
-      );
+      const issues = collectPairIssues(protectiveWith({ followMode: 'TRAILING' }));
 
       expect(issues).toHaveLength(1);
       expect(issues[0]!.code).toBe('UNKNOWN_FOLLOW_MODE');
-      expect(issues[0]!.path).toBe(
-        'BTC.strategy.protective.entries[0].followMode',
-      );
+      expect(issues[0]!.path).toBe('BTC.strategy.protective.entries[0].followMode');
       expect(issues[0]!.allowed).toEqual(FOLLOW_MODES);
     });
 
     it('refuses a residual trailingMode, and says how to translate it', () => {
-      const issues = collectPairIssues(
-        protectiveWith({ trailingMode: true }),
-      );
+      const issues = collectPairIssues(protectiveWith({ trailingMode: true }));
 
       expect(issues).toHaveLength(1);
       expect(issues[0]!.code).toBe('RETIRED_TRAILING_MODE');
@@ -1059,9 +1031,7 @@ describe('collectPairIssues', () => {
       // Le champ lui-meme est le probleme : sa presence dit que la
       // configuration vient d'avant le remplacement, et son intention doit etre
       // traduite a la main plutot que devinee.
-      const issues = collectPairIssues(
-        protectiveWith({ trailingMode: false }),
-      );
+      const issues = collectPairIssues(protectiveWith({ trailingMode: false }));
 
       expect(issues.map((i) => i.code)).toEqual(['RETIRED_TRAILING_MODE']);
     });
@@ -1190,7 +1160,7 @@ describe('collectPairIssues', () => {
     expect(issues).toEqual([]);
   });
 
-  describe("où se pose un ordre, et à quelle distance", () => {
+  describe('où se pose un ordre, et à quelle distance', () => {
     const protectiveWith = (entry: Record<string, unknown>) =>
       pairWith({
         name: 'Advanced',
@@ -1283,9 +1253,7 @@ describe('collectPairIssues', () => {
 
       expect(issues).toHaveLength(1);
       expect(issues[0]!.code).toBe('MISSING_SUBFIELD');
-      expect(issues[0]!.path).toBe(
-        'BTC.strategy.protective.entries[0].anchor.expression.left',
-      );
+      expect(issues[0]!.path).toBe('BTC.strategy.protective.entries[0].anchor.expression.left');
     });
 
     it('refuses a retired INDICATOR anchor, and says how to translate it', () => {
@@ -1309,16 +1277,14 @@ describe('collectPairIssues', () => {
     });
 
     it('refuses an anchor source it does not know', () => {
-      expect(
-        codesOf(protectiveWith({ ...SOUND, anchor: { source: 'ORACLE' } })),
-      ).toEqual(['UNKNOWN_ANCHOR_SOURCE']);
+      expect(codesOf(protectiveWith({ ...SOUND, anchor: { source: 'ORACLE' } }))).toEqual([
+        'UNKNOWN_ANCHOR_SOURCE',
+      ]);
     });
 
     it('accepts a percentage distance, the stop Freqtrade defaults to', () => {
       expect(
-        codesOf(
-          protectiveWith({ ...SOUND, distance: { unit: 'PERCENT', value: 10 } }),
-        ),
+        codesOf(protectiveWith({ ...SOUND, distance: { unit: 'PERCENT', value: 10 } })),
       ).toEqual([]);
     });
 
@@ -1326,17 +1292,13 @@ describe('collectPairIssues', () => {
       const withoutDistance = { ...SOUND };
       delete (withoutDistance as Partial<typeof SOUND>).distance;
 
-      expect(codesOf(protectiveWith(withoutDistance))).toEqual([
-        'MISSING_DISTANCE',
-      ]);
+      expect(codesOf(protectiveWith(withoutDistance))).toEqual(['MISSING_DISTANCE']);
     });
 
     it('refuses a unit it cannot compute', () => {
-      expect(
-        codesOf(
-          protectiveWith({ ...SOUND, distance: { unit: 'TICKS', value: 3 } }),
-        ),
-      ).toEqual(['UNKNOWN_DISTANCE_UNIT']);
+      expect(codesOf(protectiveWith({ ...SOUND, distance: { unit: 'TICKS', value: 3 } }))).toEqual([
+        'UNKNOWN_DISTANCE_UNIT',
+      ]);
     });
 
     // Une distance ne porte jamais de signe : le cote de l'ordre decide du sens.
@@ -1344,24 +1306,20 @@ describe('collectPairIssues', () => {
     it.each([0, -1.5, Number.NaN, Number.POSITIVE_INFINITY])(
       'refuses the distance value %p',
       (value) => {
-        expect(
-          codesOf(protectiveWith({ ...SOUND, distance: { unit: 'ATR', value } })),
-        ).toEqual(['INVALID_DISTANCE_VALUE']);
+        expect(codesOf(protectiveWith({ ...SOUND, distance: { unit: 'ATR', value } }))).toEqual([
+          'INVALID_DISTANCE_VALUE',
+        ]);
       },
     );
 
     it('refuses a distance value that arrived as a string', () => {
       expect(
-        codesOf(
-          protectiveWith({ ...SOUND, distance: { unit: 'ATR', value: '1.5' } }),
-        ),
+        codesOf(protectiveWith({ ...SOUND, distance: { unit: 'ATR', value: '1.5' } })),
       ).toEqual(['INVALID_DISTANCE_VALUE']);
     });
 
     it('refuses a residual atrMultiplier, and says how to translate it', () => {
-      const issues = collectPairIssues(
-        protectiveWith({ ...SOUND, atrMultiplier: 1.5 }),
-      );
+      const issues = collectPairIssues(protectiveWith({ ...SOUND, atrMultiplier: 1.5 }));
 
       expect(issues).toHaveLength(1);
       expect(issues[0]!.code).toBe('RETIRED_ATR_MULTIPLIER');
@@ -1372,17 +1330,15 @@ describe('collectPairIssues', () => {
     // obligerait chaque lecteur a normaliser de son cote, ou a oublier de le
     // faire. C'est l'erreur de saisie la plus probable des deux.
     it('refuses a unit that is only a casing away from a real one', () => {
-      expect(
-        codesOf(
-          protectiveWith({ ...SOUND, distance: { unit: 'atr', value: 1 } }),
-        ),
-      ).toEqual(['UNKNOWN_DISTANCE_UNIT']);
+      expect(codesOf(protectiveWith({ ...SOUND, distance: { unit: 'atr', value: 1 } }))).toEqual([
+        'UNKNOWN_DISTANCE_UNIT',
+      ]);
     });
 
     it('refuses a source that is only a casing away from a real one', () => {
-      expect(
-        codesOf(protectiveWith({ ...SOUND, anchor: { source: 'Entry' } })),
-      ).toEqual(['UNKNOWN_ANCHOR_SOURCE']);
+      expect(codesOf(protectiveWith({ ...SOUND, anchor: { source: 'Entry' } }))).toEqual([
+        'UNKNOWN_ANCHOR_SOURCE',
+      ]);
     });
 
     // Une chaine numerique est le defaut que `ion-input type="number"` a deja
@@ -1420,9 +1376,7 @@ describe('collectPairIssues', () => {
           shortname: 'advanced-rules',
           latent: {
             enabled: true,
-            entries: [
-              { side: 'LONG', orderType: 'limit', sizePercent: 100 },
-            ],
+            entries: [{ side: 'LONG', orderType: 'limit', sizePercent: 100 }],
           },
         }),
       );
@@ -1549,17 +1503,14 @@ describe('collectExpressionIssues', () => {
     expect(issues).toEqual([]);
   });
 
-  it.each([1, '', true, {}])(
-    'rejects a non-empty-string id (%p)',
-    (id) => {
-      const issues = collectExpressionIssues([
-        { id, operand: { type: 'indicator', name: 'ema', period: 9 } },
-      ]);
-      expect(issues).toHaveLength(1);
-      expect(issues[0]!.code).toBe('INVALID_EXPRESSION_ID');
-      expect(issues[0]!.path).toBe('expressions[0].id');
-    },
-  );
+  it.each([1, '', true, {}])('rejects a non-empty-string id (%p)', (id) => {
+    const issues = collectExpressionIssues([
+      { id, operand: { type: 'indicator', name: 'ema', period: 9 } },
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.code).toBe('INVALID_EXPRESSION_ID');
+    expect(issues[0]!.path).toBe('expressions[0].id');
+  });
 
   it('reports a structurally invalid operand at the nested "operand" path', () => {
     const issues = collectExpressionIssues([
@@ -1593,10 +1544,7 @@ describe('collectExpressionIssues', () => {
       'DUPLICATE_EXPRESSION_KEY',
       'DUPLICATE_EXPRESSION_KEY',
     ]);
-    expect(issues.map((i) => i.path)).toEqual([
-      'expressions[0]',
-      'expressions[1]',
-    ]);
+    expect(issues.map((i) => i.path)).toEqual(['expressions[0]', 'expressions[1]']);
   });
 
   it('flags two expressions whose operands resolve to the same computed key (no id on either)', () => {
@@ -1611,7 +1559,7 @@ describe('collectExpressionIssues', () => {
     ]);
   });
 
-  it('flags an explicit id colliding with another expression\'s computed key', () => {
+  it("flags an explicit id colliding with another expression's computed key", () => {
     const issues = collectExpressionIssues([
       { id: 'ema_9', operand: { type: 'indicator', name: 'sma', period: 20 } },
       { operand: { type: 'indicator', name: 'ema', period: 9 } },

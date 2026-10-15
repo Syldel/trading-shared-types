@@ -101,17 +101,11 @@ export function validateIndicatorOperand(
     };
   }
 
-  return (
-    validateSubField(name, operand?.subField) ??
-    validateParameters(name, operand ?? {})
-  );
+  return validateSubField(name, operand?.subField) ?? validateParameters(name, operand ?? {});
 }
 
 /** Ambiguïté de ligne : voir `INDICATOR_SUBFIELDS` (indicator-subfields.ts). */
-function validateSubField(
-  name: IndicatorName,
-  subField: unknown,
-): IndicatorOperandIssue | null {
+function validateSubField(name: IndicatorName, subField: unknown): IndicatorOperandIssue | null {
   const hasSubField = subField !== undefined && subField !== null;
 
   if (!isMultiLineIndicator(name)) {
@@ -216,10 +210,7 @@ function validateParameters(
   return null;
 }
 
-function isWellFormedParameter(
-  parameter: IndicatorParameter,
-  value: unknown,
-): boolean {
+function isWellFormedParameter(parameter: IndicatorParameter, value: unknown): boolean {
   switch (parameter.type) {
     case 'number':
       return typeof value === 'number' && Number.isFinite(value);

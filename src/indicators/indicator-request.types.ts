@@ -3,7 +3,15 @@ import type { PivotPointsType } from './indicator-series.types.js';
 /**
  * Groupements de noms d'indicateurs par signature de paramètres
  */
-export type SinglePeriodIndicatorName = 'ema' | 'sma' | 'hma' | 'rsi' | 'atr' | 'sd' | 'chop' | 'adx';
+export type SinglePeriodIndicatorName =
+  | 'ema'
+  | 'sma'
+  | 'hma'
+  | 'rsi'
+  | 'atr'
+  | 'sd'
+  | 'chop'
+  | 'adx';
 export type BollingerFamilyName = 'bb' | 'bbw' | 'bbp';
 
 /**
@@ -29,12 +37,24 @@ export type IndicatorRequest =
   | { name: SinglePeriodIndicatorName; period?: number }
   | { name: 'obv' }
   | { name: 'macd'; fastPeriod?: number; slowPeriod?: number; signalPeriod?: number }
-  | { name: 'ichimoku'; conversionPeriod?: number; basePeriod?: number; spanPeriod?: number; displacement?: number }
+  | {
+      name: 'ichimoku';
+      conversionPeriod?: number;
+      basePeriod?: number;
+      spanPeriod?: number;
+      displacement?: number;
+    }
   | { name: BollingerFamilyName; period?: number; stdDev?: number }
   | { name: 'supertrend'; period?: number; multiplier?: number }
   | { name: 'keltner'; period?: number; multiplier?: number }
   | { name: 'donchian'; period?: number }
-  | { name: 'stochrsi'; rsiPeriod?: number; stochasticPeriod?: number; kPeriod?: number; dPeriod?: number }
+  | {
+      name: 'stochrsi';
+      rsiPeriod?: number;
+      stochasticPeriod?: number;
+      kPeriod?: number;
+      dPeriod?: number;
+    }
   | { name: 'pivotpoints'; pivotType?: PivotPointsType };
 
 /**
@@ -57,14 +77,14 @@ export type IndicatorOperand =
   | {
       name: 'adx';
       period?: number;
-      subField: 'adx' | 'pdi' | 'mdi'
+      subField: 'adx' | 'pdi' | 'mdi';
     }
   | {
       name: 'macd';
       fastPeriod?: number;
       slowPeriod?: number;
       signalPeriod?: number;
-      subField: 'macd' | 'signal' | 'histogram'
+      subField: 'macd' | 'signal' | 'histogram';
     }
   | {
       name: 'ichimoku';
@@ -72,30 +92,30 @@ export type IndicatorOperand =
       basePeriod?: number;
       spanPeriod?: number;
       displacement?: number;
-      subField: 'conversion' | 'base' | 'spanA' | 'spanB'
+      subField: 'conversion' | 'base' | 'spanA' | 'spanB';
     }
   | {
       name: 'bb';
       period?: number;
       stdDev?: number;
-      subField: 'upper' | 'middle' | 'lower'
+      subField: 'upper' | 'middle' | 'lower';
     }
   | {
       name: 'supertrend';
       period?: number;
       multiplier?: number;
-      subField: 'supertrend' | 'direction'
+      subField: 'supertrend' | 'direction';
     }
   | {
       name: 'keltner';
       period?: number;
       multiplier?: number;
-      subField: 'upper' | 'middle' | 'lower'
+      subField: 'upper' | 'middle' | 'lower';
     }
   | {
       name: 'donchian';
       period?: number;
-      subField: 'upper' | 'middle' | 'lower' | 'width'
+      subField: 'upper' | 'middle' | 'lower' | 'width';
     }
   | {
       name: 'stochrsi';
@@ -103,7 +123,7 @@ export type IndicatorOperand =
       stochasticPeriod?: number;
       kPeriod?: number;
       dPeriod?: number;
-      subField: 'k' | 'd' | 'stochRSI'
+      subField: 'k' | 'd' | 'stochRSI';
     }
   | {
       name: 'pivotpoints';

@@ -25,7 +25,18 @@ describe('INDICATOR_SUBFIELDS registry', () => {
   });
 
   it('treats single-output indicators as line-free', () => {
-    for (const name of ['ema', 'sma', 'hma', 'rsi', 'atr', 'sd', 'chop', 'obv', 'bbw', 'bbp'] as const) {
+    for (const name of [
+      'ema',
+      'sma',
+      'hma',
+      'rsi',
+      'atr',
+      'sd',
+      'chop',
+      'obv',
+      'bbw',
+      'bbp',
+    ] as const) {
       expect(isMultiLineIndicator(name)).toBe(false);
       expect(getIndicatorSubFieldNames(name)).toEqual([]);
     }
@@ -39,4 +50,3 @@ describe('INDICATOR_SUBFIELDS registry', () => {
     }
   });
 });
-
