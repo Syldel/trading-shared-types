@@ -1,0 +1,9 @@
+# Commits de pur formatage : `git blame` doit les traverser plutôt que de leur
+# attribuer chaque ligne reformatée.
+#
+# À activer une fois par copie du dépôt :
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub, lui, lit ce fichier tout seul.)
+
+# style: format src with the new Prettier settings (2026-10-15)
+a0ed9469aafcfd9b8f326ed9370887f238fd88fa
