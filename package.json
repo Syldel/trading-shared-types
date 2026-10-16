@@ -40,8 +40,8 @@
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build",
     "version": "node scripts/sync-package-version.mjs && git add src/package-version.ts",
     "prepare": "npm run build",
-    "prepublishOnly": "npm run verify",
-    "husky:init": "husky"
+    "postprepare": "husky || true",
+    "prepublishOnly": "npm run verify"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
@@ -55,6 +55,7 @@
     "eslint-plugin-prettier": "^5.5.5",
     "husky": "^9.1.7",
     "jest": "^30.4.2",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.8.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",

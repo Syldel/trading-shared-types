@@ -61,107 +61,72 @@ consumer side.
 ```bash
 git clone git@github.com:Syldel/trading-shared-types.git
 cd trading-shared-types
-npm install          # installs deps + devDeps, triggers "prepare" (= build only)
-npm run husky:init   # activates the pre-commit hook — see "Git hooks" below
+npm install          # installs deps + devDeps, builds (prepare) and installs the pre-commit hook (postprepare)
 ```
 
-`npm install` alone is **not** enough to get the pre-commit check working — see why below.
+`npm install` is enough: the hook is installed by the `postprepare` script. Skipping
+scripts (`npm install --ignore-scripts`) skips the hook too; `npx husky` installs it by hand.
 
 ```bash
-npm run dev          # build in watch mode
+npm run dev           # build in watch mode
 npm run typecheck
-npm run lint
-npm run verify        # typecheck && lint && build — same check the pre-commit hook runs
+npm run lint          # ESLint, which also enforces Prettier
+npm run format        # Prettier --write
+npm run verify        # typecheck && lint && test && build
 ```
 
 ## Git hooks (Husky)
 
-### What `npm run verify` does
+### What runs on commit
 
-```bash
-npm run verify   # = npm run typecheck && npm run lint && npm run build
-```
-
-One command, three gates: type errors, lint errors, and a broken build all block on this.
-This is the command wired into the `pre-commit` hook (see below), and also what
-`prepublishOnly` runs before any future `npm publish`.
-
-### Content of `.husky/pre-commit`
+`.husky/pre-commit` is a single line:
 
 ```sh
-#!/usr/bin/env sh
-npm run verify
+npx lint-staged
 ```
 
-That's the entire hook. If `verify` exits non-zero (type error, lint error, or build
-failure), Git blocks the commit.
+and `.lintstagedrc.json` runs `eslint --fix` on the **staged** `src/**/*.ts` files. The
+ESLint config includes Prettier, so this formats and lints in one pass, on the files being
+committed only (about a second). A formatting or `import type` problem is fixed and
+re-staged; an error ESLint cannot fix (an unused variable, say) blocks the commit.
 
-### Why activation is manual, and what happens on a fresh clone
+It does **not** run `npm run verify` (27 seconds): CI runs `verify` on every push and pull
+request, and `prepublishOnly` runs it before any publish. `git commit --no-verify` skips the
+hook, and CI is then the only gate.
 
-On a **new machine**, cloning the repo does **not** automatically enable the hook:
+### How the hook gets installed, and why it is in `postprepare`
 
-```bash
-git clone git@github.com:Syldel/trading-shared-types.git
-cd trading-shared-types
-npm install
+```json
+"prepare": "npm run build",
+"postprepare": "husky || true"
 ```
 
-At this point:
-- `npm install` installs all dependencies **and** devDependencies (this is your own repo,
-  not a consumer installing it as a dependency) — so `husky` is present in `node_modules`.
-- The `prepare` script runs automatically and does `npm run build` — it does **not**
-  touch Git hook configuration.
-- `git config core.hooksPath` is still unset. The hook is **not active yet.**
+`prepare` also runs when another repository installs this package from a Git tag (the
+mobile app and the bot do), because npm clones it, installs its devDependencies and builds
+`dist/`. So whatever sits in `prepare` must never prevent that build.
 
-You must run one more command, once per machine/clone:
+**Do not write `"prepare": "husky || true && npm run build"`.** It builds on Linux and macOS
+and silently **skips the build on Windows**: `cmd.exe` binds `&&` tighter than `||`, so when
+`husky` succeeds the whole `true && npm run build` branch is skipped. The consumer's install
+succeeds and `dist/` is missing. Measured on 2026-10-16 by installing the package from a
+local Git tag. `postprepare` has a single `||`, which both shells read the same way, and the
+same test showed `dist/` built and no extra output for the consumer.
 
-```bash
-npm run husky:init
-```
-
-This runs the `husky` CLI, which sets:
-
-```bash
-git config core.hooksPath .husky
-```
-
-Verify it worked:
-
-```bash
-git config core.hooksPath
-# should print: .husky
-```
-
-### Why `husky:init` isn't wired into `prepare` or `postinstall`
-
-It would be simpler to auto-run on every `npm install` — but `prepare` (and `postinstall`)
-also fire when this package is installed **as a dependency** by Nest or Ionic (via
-`git+ssh` or `file:`). Those consumers don't have `husky` in their own `node_modules`
-(it's only a devDependency of *this* repo), so an automatic `husky` call there would
-fail and break their install entirely.
-
-So the split is intentional:
-- `prepare` → `npm run build` only (needed by consumers, harmless for them).
-- `husky:init` → manual, one-time, per clone, only relevant to people developing
-  *this* repo, never triggered by a consumer's install.
-
-The trade-off: you have to remember to run `npm run husky:init` after every fresh
-clone. Forgetting it doesn't break anything immediately — it just means commits on
-that machine won't be gated by `verify` until you run it.
+`husky || true` never fails an install: if Husky is absent or there is no `.git` directory,
+the hook is simply not installed.
 
 ### About `.husky/_`
 
-After running `husky:init`, Git points `core.hooksPath` at `.husky`, and Husky
-generates an internal wrapper directory `.husky/_` (implementation detail, regenerated
-automatically — this is why it's excluded in `.gitignore`). The file you actually
-edit and that matters is `.husky/pre-commit` itself, which **is** committed.
+Husky points `core.hooksPath` at `.husky/_`, an internal wrapper directory it regenerates
+(its own `.gitignore` excludes it). The file that matters, and that is committed, is
+`.husky/pre-commit`.
 
 ## Initializing the repo (first time only)
 
 ```bash
 git init -b main
 npm install                     # generates package-lock.json (needed by `npm ci` in CI)
-npm run husky:init              # activates the pre-commit hook (needs .git to already exist)
+                                # (the pre-commit hook is installed by `npm install`, once .git exists)
 git add -A
 git commit -m "chore: initial scaffold for shared trading types package"
 git tag -a v0.1.0 -m "v0.1.0 — initial strategy/exchange/chart types"
