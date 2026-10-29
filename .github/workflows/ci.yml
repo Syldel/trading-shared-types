@@ -12,9 +12,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Même ligne de Node qu'en local : .nvmrc fait foi, pas un numéro recopié ici.
+      # Il ne nomme que la majeure : `check-latest` prend le dernier correctif publié
+      # plutôt que celui en cache sur le runner, qui peut dater d'avant un bulletin
+      # de sécurité.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
+          check-latest: true
           cache: npm
 
       - run: npm ci
